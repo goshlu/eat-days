@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 243 75% 59%;
+    --radius: 0.75rem;
+  }
+}
+
+:root {
+  --gradient-start: #667eea;
+  --gradient-end: #764ba2;
+  --sichuan-red: #ef4444;
+}
+
+* {
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: #f5f5f7;
+  min-height: 100vh;
+}
+
+/* 渐变背景 */
+@layer utilities {
+  .gradient-header {
+    background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+  }
+
+  .gradient-btn {
+    background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+  }
+
+  .gradient-btn:active {
+    transform: scale(0.97);
+  }
+}
+
+/* 卡片样式 */
+.card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* 场景分区配色 */
+.section-cook {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border-left: 4px solid #f97316;
+}
+
+.section-takeout {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-left: 4px solid #3b82f6;
+}
+
+.section-eatout {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-left: 4px solid #22c55e;
+}
+
+/* 辣度按钮 */
+.spicy-btn {
+  border: 2px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.spicy-btn.active {
+  border-color: var(--gradient-start);
+  background: #f0f5ff;
+  transform: scale(1.05);
+}
+
+.spicy-btn:active {
+  transform: scale(0.95);
+}
+
+/* 标签 */
+.tag {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 淡入动画 */
+.fade-in {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 加载旋转 */
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e5e7eb;
+  border-top: 3px solid var(--gradient-start);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 折叠面板箭头 */
+.setting-toggle {
+  transition: transform 0.3s;
+}
+
+.setting-toggle.collapsed {
+  transform: rotate(-90deg);
+}
+
+/* 历史标签 */
+.history-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: #f3f4f6;
+  border-radius: 9999px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.history-chip .remove {
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.history-chip .remove:hover {
+  color: #ef4444;
+}
+
+/* 流式输出光标 */
+.streaming-cursor::after {
+  content: '▍';
+  animation: blink 0.8s step-end infinite;
+  color: var(--gradient-start);
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 滚动条优化 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
