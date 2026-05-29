@@ -29,6 +29,7 @@ interface RecommendationJSON {
   cook: { dish: string; reason: string; quickTip: string; ingredients: string };
   takeout: { dish: string; reason: string; tip: string };
   eatOut: { type: string; dish: string; tip: string };
+  chefComment?: string;
 }
 
 interface CachedRecommendation {
@@ -205,7 +206,8 @@ function parseMarkdownToJSON(content: string): RecommendationJSON {
     dish: content.match(/\*\*必点菜品[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
     tip: content.match(/\*\*单人友好提示[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
   };
-  return { cook, takeout, eatOut };
+  const chefComment = content.match(/\*\*点评[：:]\*\*\s*(.+)/)?.[1]?.trim() || '';
+  return { cook, takeout, eatOut, chefComment };
 }
 
 // ---- 构建 System Prompt ----
@@ -265,7 +267,10 @@ ${ingredients && ingredients.length > 0 ? '✅ 做饭板块请优先使用用户
 ## 🚶 出去吃
 - **推荐餐厅类型：**xxx
 - **必点菜品：**xxx
-- **单人友好提示：**xxx`;
+- **单人友好提示：**xxx
+
+## 💬 大厨点评
+- **点评：**xxx（30字以内，幽默或专业，如"这道麻婆豆腐的豆瓣酱一定要用郫县三年陈，才够魂"）`;
 }
 
 // ---- POST /api/recommend ----

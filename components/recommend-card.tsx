@@ -15,6 +15,7 @@ interface RecommendationJSON {
   cook: { dish: string; reason: string; quickTip: string; ingredients: string };
   takeout: { dish: string; reason: string; tip: string };
   eatOut: { type: string; dish: string; tip: string };
+  chefComment?: string;
 }
 
 interface RecommendCardProps {
@@ -149,6 +150,25 @@ function RecommendationJSONContent({ data, onDisliked }: { data: RecommendationJ
           )}
         </div>
       ))}
+      {/* 大厨点评 */}
+      {data.chefComment && (
+        <div
+          className={cn(
+            'rounded-xl p-4 mb-4',
+            'animate-in fade-in slide-in-from-bottom-2 duration-300',
+            'bg-gradient-to-br from-amber-50 to-yellow-50',
+          )}
+          style={{ animationDelay: '300ms' }}
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-xl">💬</span>
+            <div>
+              <h3 className="font-semibold text-gray-800 text-sm mb-1">大厨点评</h3>
+              <p className="text-sm text-gray-600 italic">{data.chefComment}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

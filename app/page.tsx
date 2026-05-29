@@ -20,6 +20,7 @@ interface RecommendationJSON {
   cook: { dish: string; reason: string; quickTip: string; ingredients: string };
   takeout: { dish: string; reason: string; tip: string };
   eatOut: { type: string; dish: string; tip: string };
+  chefComment?: string;
 }
 
 // ============================================================
@@ -153,7 +154,8 @@ export default function Home() {
         dish: completion.match(/\*\*必点菜品[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
         tip: completion.match(/\*\*单人友好提示[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
       };
-      setAiRecommendation({ cook, takeout, eatOut });
+      const chefComment = completion.match(/\*\*点评[：:]\*\*\s*(.+)/)?.[1]?.trim() || '';
+      setAiRecommendation({ cook, takeout, eatOut, chefComment });
       // 埋点
       trackRecommendationShown({
         cook: cook.dish,
