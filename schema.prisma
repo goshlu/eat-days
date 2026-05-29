@@ -1,0 +1,103 @@
+// ============================================================
+// 一人食·川菜推荐官 — Prisma Schema
+// 数据库：PostgreSQL
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// 用户模型（NextAuth 兼容）
+model User {
+  id            String    @id @default(cuid())
+  name          String?   // 昵称
+  email         String?   @unique // 邮箱
+  emailVerified DateTime? // 邮箱验证时间
+  image         String?   // 头像 URL
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  spicyLevel    Int       @default(3) // 辣度偏好 1-5
+  dislikes      String[]  // 忌口清单
+  provider      String    @default("deepseek") // AI 服务商
+  apiKey        String?   // 加密存储的 API Key
+  accounts      Account[]
+  sessions      Session[]
+  recommendations Recommendation[]
+  blacklistItems  BlacklistItem[]
+}
+
+/// NextAuth 账号绑定
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// NextAuth 会话
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// NextAuth 验证令牌
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+/// 每日推荐记录
+model Recommendation {
+  id        String   @id @default(cuid())
+  date      DateTime // 推荐日期
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cook      Json     // {dish, reason, quickTip, ingredients}
+  takeout   Json     // {dish, reason, tip}
+  eatOut    Json     // {type, dish, tip}
+  createdAt DateTime @default(now())
+
+  @@unique([date, userId]) // 每个用户每天只能有一条推荐
+  @@index([userId])
+  @@index([date])
+}
+
+/// 黑名单菜品（用于防重复推荐，7天TTL自动清理）
+model BlacklistItem {
+  id        String   @id @default(cuid())
+  dishName  String   // 菜品名称
+  userId    String?  // 关联用户（可选，全局黑名单可为空）
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([dishName])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+}
