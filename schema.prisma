@@ -29,6 +29,7 @@ model User {
   sessions      Session[]
   recommendations Recommendation[]
   blacklistItems  BlacklistItem[]
+  groups        Group[]   // 创建的聚餐房间
 }
 
 /// NextAuth 账号绑定
@@ -122,4 +123,41 @@ model Feedback {
   @@index([takeoutDish])
   @@index([createdAt])
   @@index([userId])
+}
+
+/// 聚餐房间
+model Group {
+  id          String        @id @default(cuid())
+  code        String        @unique // 短链接代码（6位）
+  name        String        // 房间名称
+  creatorId   String        // 创建者 ID
+  creator     User          @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  status      String        @default("waiting") // waiting/recommending/completed
+  city        String?       // 城市
+  location    Json?         // {lat, lng} 位置
+  aiResult    Json?         // AI 推荐结果
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  members     GroupMember[]
+
+  @@index([code])
+  @@index([creatorId])
+  @@index([status])
+}
+
+/// 聚餐成员
+model GroupMember {
+  id          String   @id @default(cuid())
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String?  // 可选，匿名用户可加入
+  nickname    String   // 昵称
+  spicyLevel  Int      @default(3) // 辣度偏好 1-5
+  dislikes    String[] // 忌口清单
+  preferences String?  // 其他偏好
+  isCreator   Boolean  @default(false) // 是否是创建者
+  joinedAt    DateTime @default(now())
+
+  @@unique([groupId, nickname])
+  @@index([groupId])
 }
