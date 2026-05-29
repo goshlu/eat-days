@@ -29,6 +29,7 @@ interface GenerationStats {
   retries: number;
   totalTokens: number;
   duration: number;
+  [key: string]: number;
 }
 
 // ---- 常量 ----
