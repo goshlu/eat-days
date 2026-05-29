@@ -10,6 +10,7 @@ import * as Sentry from '@sentry/nextjs';
 import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
 import { trackUserActivity } from '@/lib/activity';
+import { createHash } from 'crypto';
 
 // ---- 类型定义 ----
 interface RecommendRequest {
@@ -32,7 +33,8 @@ interface CachedRecommendation {
 }
 
 // ---- 常量 ----
-const CACHE_TTL = 24 * 60 * 60;
+const CACHE_TTL_STABLE = 24 * 60 * 60; // 偏好不变时缓存 24 小时
+const CACHE_TTL_CHANGED = 2 * 60 * 60; // 偏好改变时缓存 2 小时
 const BLACKLIST_TTL_DAYS = 7;
 const RATE_LIMIT_MAX = 3; // 每用户每天最多生成 3 次
 const RATE_LIMIT_TTL = 86400; // 24 小时过期
@@ -46,10 +48,36 @@ const SPICY_MAP: Record<number, string> = {
   5: '变态辣（挑战极限）',
 };
 
-// ---- 构建缓存 Key ----
-function getCacheKey(userId: string | undefined, date: string): string {
+// ---- 计算偏好哈希 ----
+function computePreferencesHash(spicyLevel: number, dislikes: string[]): string {
+  const sorted = [...dislikes].sort().join(',');
+  const payload = `spicy:${spicyLevel}|dislikes:${sorted}`;
+  return createHash('md5').update(payload).digest('hex').slice(0, 12);
+}
+
+// ---- 构建缓存 Key（含偏好哈希） ----
+function getCacheKey(userId: string | undefined, date: string, spicyLevel: number, dislikes: string[]): string {
   const uid = userId || 'anonymous';
-  return `recommend:${uid}:${date}`;
+  const hash = computePreferencesHash(spicyLevel, dislikes);
+  return `recommend:${uid}:${date}:${hash}`;
+}
+
+// ---- 获取用户的上次偏好哈希 ----
+async function getLastPreferencesHash(userId: string): Promise<string | null> {
+  try {
+    return await redis.get<string>(`prefs:hash:${userId}`);
+  } catch {
+    return null;
+  }
+}
+
+// ---- 保存用户的偏好哈希 ----
+async function savePreferencesHash(userId: string, hash: string): Promise<void> {
+  try {
+    await redis.set(`prefs:hash:${userId}`, hash, { ex: 7 * 24 * 60 * 60 }); // 7 天过期
+  } catch {
+    // 静默失败
+  }
 }
 
 // ---- 获取客户端标识（用于匿名用户限流） ----
@@ -275,7 +303,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 1: 检查 Redis 缓存（缓存命中不消耗额度）
-    const cacheKey = getCacheKey(userId, date);
+    const currentHash = computePreferencesHash(spicyLevel, dislikes);
+    const cacheKey = getCacheKey(userId, date, spicyLevel, dislikes);
+    
+    // 检查偏好是否变化
+    let cacheTTL = CACHE_TTL_STABLE; // 默认 24h
+    if (userId) {
+      const lastHash = await getLastPreferencesHash(userId);
+      if (lastHash && lastHash !== currentHash) {
+        cacheTTL = CACHE_TTL_CHANGED; // 偏好变化，缓存 2h
+        console.log(`[Cache] Preferences changed for ${userId}: ${lastHash} -> ${currentHash}`);
+      }
+    }
+
     try {
       const cached = await redis.get<CachedRecommendation>(cacheKey);
       if (cached?.content) {
@@ -331,9 +371,10 @@ export async function POST(req: NextRequest) {
             if (done) {
               const dishes = extractDishNames(fullContent);
               Promise.allSettled([
-                redis.set(cacheKey, { content: fullContent, createdAt: Date.now() }, { ex: CACHE_TTL }).catch(() => {}),
+                redis.set(cacheKey, { content: fullContent, createdAt: Date.now() }, { ex: cacheTTL }).catch(() => {}),
                 saveToBlacklist(userId, dishes),
                 userId ? saveRecommendation(userId, date, fullContent) : Promise.resolve(),
+                userId ? savePreferencesHash(userId, currentHash) : Promise.resolve(),
               ]).catch(() => {});
               controller.close();
               break;
