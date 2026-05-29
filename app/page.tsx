@@ -264,6 +264,33 @@ export default function Home() {
     }, 600);
   }, [blacklist, addHistoryDish]);
 
+  // ---- 生成入口 ----
+  const generate = React.useCallback(() => {
+    if (rateLimitReached) return;
+
+    if (apiKey) {
+      // AI 模式：通过 useCompletion 调用后端
+      setLocalContent('');
+      complete('请生成今日一人食川菜推荐。', {
+        body: {
+          date: getApiDateStr(),
+          spicyLevel,
+          dislikes,
+          historyDishes: blacklist,
+          provider,
+          apiKey,
+          userId,
+          weather: weatherDesc || undefined,
+          city,
+          ingredients: ingredients.length > 0 ? ingredients : undefined,
+        },
+      });
+    } else {
+      // 本地模式
+      generateLocal();
+    }
+  }, [apiKey, complete, spicyLevel, dislikes, blacklist, provider, generateLocal, userId, weatherDesc, city, ingredients, rateLimitReached]);
+
   // ---- 随机惊喜（从历史中随机选一天） ----
   const [randomLoading, setRandomLoading] = React.useState(false);
 
@@ -295,33 +322,6 @@ export default function Home() {
       setRandomLoading(false);
     }
   }, [userId, generate]);
-
-  // ---- 生成入口 ----
-  const generate = React.useCallback(() => {
-    if (rateLimitReached) return;
-
-    if (apiKey) {
-      // AI 模式：通过 useCompletion 调用后端
-      setLocalContent('');
-      complete('请生成今日一人食川菜推荐。', {
-        body: {
-          date: getApiDateStr(),
-          spicyLevel,
-          dislikes,
-          historyDishes: blacklist,
-          provider,
-          apiKey,
-          userId,
-          weather: weatherDesc || undefined,
-          city,
-          ingredients: ingredients.length > 0 ? ingredients : undefined,
-        },
-      });
-    } else {
-      // 本地模式
-      generateLocal();
-    }
-  }, [apiKey, complete, spicyLevel, dislikes, blacklist, provider, generateLocal, userId, weatherDesc, city, ingredients, rateLimitReached]);
 
   // ---- 刷新（换一天） ----
   const refresh = React.useCallback(() => {
