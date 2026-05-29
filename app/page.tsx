@@ -11,6 +11,7 @@ import { RecommendCard } from '@/components/recommend-card';
 import { UserNav } from '@/components/user-nav';
 import { WeatherBadge } from '@/components/weather-badge';
 import { ShareButton } from '@/components/share-button';
+import { VoiceControl } from '@/components/voice-control';
 import { RefreshCw, Loader2, Shuffle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trackRecommendationShown, trackSettingsUpdated } from '@/lib/analytics';
@@ -122,6 +123,16 @@ export default function Home() {
 
   // ---- useCompletion（AI 模式） ----
   const [aiRecommendation, setAiRecommendation] = React.useState<RecommendationJSON | null>(null);
+  const [speakText, setSpeakText] = React.useState<string | undefined>();
+
+  // 语音命令处理
+  const handleVoiceCommand = React.useCallback((command: 'generate' | 'refresh') => {
+    if (command === 'generate') {
+      generate();
+    } else if (command === 'refresh') {
+      refresh();
+    }
+  }, [generate, refresh]);
   
   const {
     completion,
@@ -156,6 +167,10 @@ export default function Home() {
       };
       const chefComment = completion.match(/\*\*点评[：:]\*\*\s*(.+)/)?.[1]?.trim() || '';
       setAiRecommendation({ cook, takeout, eatOut, chefComment });
+      // 语音播报第一道菜
+      if (cook.dish) {
+        setSpeakText(`今日推荐做饭：${cook.dish}。${cook.reason}`);
+      }
       // 埋点
       trackRecommendationShown({
         cook: cook.dish,
@@ -424,6 +439,12 @@ export default function Home() {
           >
             <RefreshCw className={cn('h-5 w-5', displayLoading && 'animate-spin')} />
           </Button>
+          <VoiceControl
+            onCommand={handleVoiceCommand}
+            speakText={speakText}
+            disabled={displayLoading || rateLimitReached}
+            className="h-12"
+          />
         </div>
 
         {/* 历史记录 */}
