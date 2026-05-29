@@ -9,6 +9,7 @@ import { NextRequest } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
+import { trackUserActivity } from '@/lib/activity';
 
 // ---- 类型定义 ----
 interface RecommendRequest {
@@ -249,6 +250,11 @@ export async function POST(req: NextRequest) {
     }
     if (spicyLevel < 1 || spicyLevel > 5) {
       return Response.json({ error: 'spicyLevel 必须在 1-5 之间' }, { status: 400 });
+    }
+
+    // 记录用户活跃状态（用于预生成）
+    if (userId) {
+      await trackUserActivity(userId);
     }
 
     // Step 0: 检查每日额度限制
