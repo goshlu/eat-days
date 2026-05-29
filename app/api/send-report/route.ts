@@ -4,16 +4,23 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { createRequestLogger } from '@/lib/logger';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get('x-request-id') || 'unknown';
   const logger = createRequestLogger(requestId);
 
   try {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      logger.warn('RESEND_API_KEY not configured');
+      return NextResponse.json({ error: '邮件服务未配置' }, { status: 503 });
+    }
+
+    // 动态导入 Resend
+    const { Resend } = await import('resend');
+    const resend = new Resend(apiKey);
+
     const { to, subject, html, userName } = await req.json();
 
     if (!to) {

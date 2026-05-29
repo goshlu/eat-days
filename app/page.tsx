@@ -47,6 +47,28 @@ function getApiDateStr(): string {
   return `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 星期${WEEKDAYS[now.getDay()]}`;
 }
 
+// ---- 每日额度管理（localStorage） ----
+function getTodayRateLimit(): { count: number; date: string } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RATE_LIMIT_KEY) || '{}');
+    const today = new Date().toISOString().slice(0, 10);
+    if (raw.date === today) {
+      return { count: raw.count || 0, date: today };
+    }
+    return { count: 0, date: today };
+  } catch {
+    return { count: 0, date: new Date().toISOString().slice(0, 10) };
+  }
+}
+
+function incrementRateLimit(): number {
+  const today = new Date().toISOString().slice(0, 10);
+  const { count } = getTodayRateLimit();
+  const newCount = count + 1;
+  localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify({ count: newCount, date: today }));
+  return newCount;
+}
+
 // ---- 主页面 ----
 export default function Home() {
   // NextAuth session
@@ -125,51 +147,6 @@ export default function Home() {
   // ---- useCompletion（AI 模式） ----
   const [aiRecommendation, setAiRecommendation] = React.useState<RecommendationJSON | null>(null);
   const [speakText, setSpeakText] = React.useState<string | undefined>();
-
-  // 语音命令处理
-  const handleVoiceCommand = React.useCallback((command: 'generate' | 'refresh') => {
-    if (command === 'generate') {
-      generate();
-    } else if (command === 'refresh') {
-      refresh();
-    }
-  }, [generate, refresh]);
-
-  // 语音反馈处理
-  const handleVoiceFeedback = React.useCallback((feedback: {
-    transcript: string;
-    sentiment: 'positive' | 'negative' | 'neutral';
-    suggestions: {
-      spicyLevel?: number;
-      preferredIngredients?: string[];
-      dislikedIngredients?: string[];
-      preferredDishes?: string[];
-    };
-    response: string;
-  }) => {
-    const { suggestions, sentiment } = feedback;
-
-    // 更新辣度偏好
-    if (suggestions.spicyLevel) {
-      setSpicyLevel(suggestions.spicyLevel);
-    }
-
-    // 更新忌口列表
-    if (suggestions.dislikedIngredients && suggestions.dislikedIngredients.length > 0) {
-      setDislikes(prev => {
-        const newDislikes = [...new Set([...prev, ...suggestions.dislikedIngredients!])];
-        return newDislikes;
-      });
-    }
-
-    // 如果是负向反馈或有具体修改意见，自动刷新推荐
-    if (sentiment === 'negative' || suggestions.spicyLevel || suggestions.dislikedIngredients) {
-      setTimeout(() => generate(), 500);
-    }
-
-    // 保存偏好到本地存储
-    savePrefs();
-  }, [savePrefs]);
   
   const {
     completion,
@@ -253,6 +230,23 @@ export default function Home() {
     });
   }, [complete, spicyLevel, dislikes, blacklist, userId, weatherDesc, city, ingredients, rateLimitReached]);
 
+  // ---- 刷新（换一天） ----
+  const refresh = React.useCallback(() => {
+    if (rateLimitReached) return;
+    if (aiLoading) {
+      stop();
+    }
+    // 清除今天的历史记录
+    const today = new Date().toISOString().slice(0, 10);
+    const filtered = history.filter(
+      (h) => new Date(h.date).toISOString().slice(0, 10) !== today,
+    );
+    setHistory(filtered);
+    saveHistory(filtered);
+    // 稍后重新生成
+    setTimeout(generate, 100);
+  }, [aiLoading, stop, history, saveHistory, generate, rateLimitReached]);
+
   // ---- 随机惊喜（从历史中随机选一天） ----
   const [randomLoading, setRandomLoading] = React.useState(false);
 
@@ -286,22 +280,51 @@ export default function Home() {
     }
   }, [userId, generate]);
 
-  // ---- 刷新（换一天） ----
-  const refresh = React.useCallback(() => {
-    if (rateLimitReached) return;
-    if (aiLoading) {
-      stop();
+  // 语音命令处理
+  const handleVoiceCommand = React.useCallback((command: 'generate' | 'refresh') => {
+    if (command === 'generate') {
+      generate();
+    } else if (command === 'refresh') {
+      refresh();
     }
-    // 清除今天的历史记录
-    const today = new Date().toISOString().slice(0, 10);
-    const filtered = history.filter(
-      (h) => new Date(h.date).toISOString().slice(0, 10) !== today,
-    );
-    setHistory(filtered);
-    saveHistory(filtered);
-    // 稍后重新生成
-    setTimeout(generate, 100);
-  }, [aiLoading, stop, history, saveHistory, generate, rateLimitReached]);
+  }, [generate, refresh]);
+
+  // 语音反馈处理
+  const handleVoiceFeedback = React.useCallback((feedback: {
+    transcript: string;
+    sentiment: 'positive' | 'negative' | 'neutral';
+    suggestions: {
+      spicyLevel?: number;
+      preferredIngredients?: string[];
+      dislikedIngredients?: string[];
+      preferredDishes?: string[];
+    };
+    response: string;
+  }) => {
+    const { suggestions, sentiment } = feedback;
+
+    // 更新辣度偏好
+    if (suggestions.spicyLevel) {
+      setSpicyLevel(suggestions.spicyLevel);
+    }
+
+    // 更新忌口列表
+    if (suggestions.dislikedIngredients && suggestions.dislikedIngredients.length > 0) {
+      setDislikes(prev => {
+        const combined = [...prev, ...suggestions.dislikedIngredients!];
+        const newDislikes = Array.from(new Set(combined));
+        return newDislikes;
+      });
+    }
+
+    // 如果是负向反馈或有具体修改意见，自动刷新推荐
+    if (sentiment === 'negative' || suggestions.spicyLevel || suggestions.dislikedIngredients) {
+      setTimeout(() => generate(), 500);
+    }
+
+    // 保存偏好到本地存储
+    savePrefs();
+  }, [generate, savePrefs]);
 
   // ---- 设置保存 ----
   const handleSaveSettings = React.useCallback(
