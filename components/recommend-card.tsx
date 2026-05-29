@@ -8,6 +8,7 @@ import { Loader2, Utensils, Bike, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DislikeButton } from '@/components/dislike-button';
 import { RecommendSkeleton } from '@/components/recommend-skeleton';
+import { FeedbackButtons } from '@/components/feedback-buttons';
 
 // ---- 推荐数据类型 ----
 interface RecommendationJSON {
@@ -22,6 +23,9 @@ interface RecommendCardProps {
   isLoading: boolean;
   error: string | null;
   dateStr: string;
+  userId?: string;
+  spicyLevel?: number;
+  dislikes?: string[];
   onDisliked?: (dishName: string) => void;
 }
 
@@ -222,7 +226,7 @@ function extractDishFromSection(section: string): string | null {
   return null;
 }
 
-export function RecommendCard({ content, recommendation, isLoading, error, dateStr, onDisliked }: RecommendCardProps) {
+export function RecommendCard({ content, recommendation, isLoading, error, dateStr, userId, spicyLevel, dislikes, onDisliked }: RecommendCardProps) {
   // 空状态
   if (!isLoading && !content && !recommendation && !error) {
     return (
@@ -273,6 +277,16 @@ export function RecommendCard({ content, recommendation, isLoading, error, dateS
         <Card className="overflow-hidden">
           <CardContent className="p-5">
             <RecommendationJSONContent data={recommendation} onDisliked={onDisliked} />
+            <div className="mt-4 pt-3 border-t border-gray-200 flex justify-center">
+              <FeedbackButtons
+                cookDish={recommendation.cook.dish}
+                takeoutDish={recommendation.takeout.dish}
+                eatOutDish={recommendation.eatOut.dish}
+                userId={userId}
+                spicyLevel={spicyLevel}
+                dislikes={dislikes}
+              />
+            </div>
           </CardContent>
         </Card>
       </div>

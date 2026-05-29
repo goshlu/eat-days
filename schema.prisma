@@ -101,3 +101,25 @@ model BlacklistItem {
   @@index([createdAt])
   @@index([userId, createdAt])
 }
+
+/// 推荐反馈评分
+model Feedback {
+  id             String   @id @default(cuid())
+  userId         String?  // 用户 ID（可选，匿名也可评分）
+  recommendationId String? // 关联推荐 ID（可选）
+  rating         Int      // 评分：1=👍, -1=👎
+  cookDish       String   // 做饭菜品名
+  takeoutDish    String   // 外卖菜品名
+  eatOutDish     String   // 出去吃菜品名
+  section        String?  // 评分的具体板块：cook/takeout/eatOut
+  spicyLevel     Int      // 当时的辣度设置
+  dislikes       String[] // 当时的忌口设置
+  comment        String?  // 可选备注
+  createdAt      DateTime @default(now())
+
+  @@index([rating])
+  @@index([cookDish])
+  @@index([takeoutDish])
+  @@index([createdAt])
+  @@index([userId])
+}

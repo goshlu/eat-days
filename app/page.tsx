@@ -508,6 +508,9 @@ export default function Home() {
           isLoading={displayLoading}
           error={rateLimitReached ? null : displayError}
           dateStr={getDateStr()}
+          userId={userId}
+          spicyLevel={spicyLevel}
+          dislikes={dislikes}
         />
 
         </div>
