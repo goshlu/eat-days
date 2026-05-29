@@ -33,6 +33,8 @@ interface CachedRecommendation {
 // ---- 常量 ----
 const CACHE_TTL = 24 * 60 * 60;
 const BLACKLIST_TTL_DAYS = 7;
+const RATE_LIMIT_MAX = 3; // 每用户每天最多生成 3 次
+const RATE_LIMIT_TTL = 86400; // 24 小时过期
 
 // ---- 辣度映射 ----
 const SPICY_MAP: Record<number, string> = {
@@ -47,6 +49,19 @@ const SPICY_MAP: Record<number, string> = {
 function getCacheKey(userId: string | undefined, date: string): string {
   const uid = userId || 'anonymous';
   return `recommend:${uid}:${date}`;
+}
+
+// ---- 获取客户端标识（用于匿名用户限流） ----
+function getClientId(req: NextRequest, userId?: string): string {
+  if (userId) return userId;
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')
+    || 'anonymous';
+}
+
+// ---- 构建限流 Key ----
+function getRateLimitKey(clientId: string, date: string): string {
+  return `rate:limit:${clientId}:${date}`;
 }
 
 // ---- 获取黑名单 ----
@@ -236,7 +251,24 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'spicyLevel 必须在 1-5 之间' }, { status: 400 });
     }
 
-    // Step 1: 检查 Redis 缓存
+    // Step 0: 检查每日额度限制
+    const clientId = getClientId(req, userId);
+    const rateLimitKey = getRateLimitKey(clientId, date);
+    try {
+      const currentCount = await redis.get<number>(rateLimitKey);
+      if (currentCount !== null && currentCount >= RATE_LIMIT_MAX) {
+        console.log(`[RateLimit] EXCEEDED for ${clientId} on ${date} (${currentCount}/${RATE_LIMIT_MAX})`);
+        return Response.json(
+          { error: 'RATE_LIMIT_EXCEEDED', message: '明天再来吧，今天的推荐次数已用完 😋' },
+          { status: 429 },
+        );
+      }
+    } catch (rateLimitError) {
+      console.warn('[RateLimit] Redis unavailable:', rateLimitError);
+      // Redis 不可用时不限流，继续处理
+    }
+
+    // Step 1: 检查 Redis 缓存（缓存命中不消耗额度）
     const cacheKey = getCacheKey(userId, date);
     try {
       const cached = await redis.get<CachedRecommendation>(cacheKey);
@@ -252,6 +284,18 @@ export async function POST(req: NextRequest) {
 
     // Step 2: 获取黑名单
     const blacklist = await getBlacklist(userId, historyDishes);
+
+    // Step 2.5: 消耗一次额度（原子递增）
+    try {
+      const newCount = await redis.incr(rateLimitKey);
+      if (newCount === 1) {
+        await redis.expire(rateLimitKey, RATE_LIMIT_TTL);
+      }
+      console.log(`[RateLimit] ${clientId} on ${date}: ${newCount}/${RATE_LIMIT_MAX}`);
+    } catch (rateLimitError) {
+      console.warn('[RateLimit] Failed to increment:', rateLimitError);
+      // 递增失败不阻塞请求
+    }
 
     // Step 3: 构建 Prompt 并调用 AI
     const systemPrompt = buildSystemPrompt(date, spicyLevel, dislikes, blacklist, body?.weather, body?.city, body?.ingredients);

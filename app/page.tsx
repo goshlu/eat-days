@@ -23,6 +23,30 @@ const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'] as const;
 const STORAGE_KEY = 'sichuan_solo_prefs';
 const HISTORY_KEY = 'sichuan_solo_history';
 const HISTORY_TTL = 7 * 24 * 60 * 60 * 1000;
+const RATE_LIMIT_KEY = 'sichuan_solo_rate_limit';
+const RATE_LIMIT_MAX = 3;
+
+// ---- 每日额度管理（localStorage，与后端 Redis 同步） ----
+function getTodayRateLimit(): { count: number; date: string } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RATE_LIMIT_KEY) || '{}');
+    const today = new Date().toISOString().slice(0, 10);
+    if (raw.date === today) {
+      return { count: raw.count || 0, date: today };
+    }
+    return { count: 0, date: today };
+  } catch {
+    return { count: 0, date: new Date().toISOString().slice(0, 10) };
+  }
+}
+
+function incrementRateLimit(): number {
+  const today = new Date().toISOString().slice(0, 10);
+  const { count } = getTodayRateLimit();
+  const newCount = count + 1;
+  localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify({ count: newCount, date: today }));
+  return newCount;
+}
 
 // ---- 本地菜品库（无 API Key 时使用） ----
 const DISH_DB = {
@@ -101,6 +125,9 @@ export default function Home() {
   const [localContent, setLocalContent] = React.useState('');
   const [localLoading, setLocalLoading] = React.useState(false);
 
+  // 每日额度状态
+  const [rateLimitReached, setRateLimitReached] = React.useState(false);
+
   // 加载本地存储
   React.useEffect(() => {
     setMounted(true);
@@ -119,6 +146,14 @@ export default function Home() {
       const filtered = raw.filter((h) => now - h.date < HISTORY_TTL);
       setHistory(filtered);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(filtered));
+    } catch { /* ignore */ }
+
+    // 检查每日额度
+    try {
+      const { count } = getTodayRateLimit();
+      if (count >= RATE_LIMIT_MAX) {
+        setRateLimitReached(true);
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -163,14 +198,30 @@ export default function Home() {
       const takeoutMatch = completion.match(/\*\*推荐点[：:]\*\*\s*(.+)/);
       if (cookMatch?.[1]) addHistoryDish(cookMatch[1].trim());
       if (takeoutMatch?.[1]) addHistoryDish(takeoutMatch[1].trim());
+      // AI 模式成功，递增本地额度计数
+      const newCount = incrementRateLimit();
+      if (newCount >= RATE_LIMIT_MAX) {
+        setRateLimitReached(true);
+      }
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       console.error('AI completion error:', err);
+      // 检查是否为 429 额度超限错误
+      if (err?.message?.includes('429') || err?.message?.includes('RATE_LIMIT_EXCEEDED')) {
+        setRateLimitReached(true);
+      }
     },
   });
 
   // ---- 本地推荐 ----
   const generateLocal = React.useCallback(() => {
+    // 检查每日额度
+    const { count } = getTodayRateLimit();
+    if (count >= RATE_LIMIT_MAX) {
+      setRateLimitReached(true);
+      return;
+    }
+
     setLocalLoading(true);
     setLocalContent('');
 
@@ -204,12 +255,19 @@ export default function Home() {
       setLocalContent(md);
       addHistoryDish(cook.dish);
       addHistoryDish(takeout.dish);
+      // 本地模式成功，递增额度计数
+      const newCount = incrementRateLimit();
+      if (newCount >= RATE_LIMIT_MAX) {
+        setRateLimitReached(true);
+      }
       setLocalLoading(false);
     }, 600);
   }, [blacklist, addHistoryDish]);
 
   // ---- 生成入口 ----
   const generate = React.useCallback(() => {
+    if (rateLimitReached) return;
+
     if (apiKey) {
       // AI 模式：通过 useCompletion 调用后端
       setLocalContent('');
@@ -231,10 +289,11 @@ export default function Home() {
       // 本地模式
       generateLocal();
     }
-  }, [apiKey, complete, spicyLevel, dislikes, blacklist, provider, generateLocal, userId, weatherDesc, city, ingredients]);
+  }, [apiKey, complete, spicyLevel, dislikes, blacklist, provider, generateLocal, userId, weatherDesc, city, ingredients, rateLimitReached]);
 
-  // ---- 刷新 ----
+  // ---- 刷新（换一天） ----
   const refresh = React.useCallback(() => {
+    if (rateLimitReached) return;
     if (aiLoading) {
       stop();
     }
@@ -248,7 +307,7 @@ export default function Home() {
     setLocalContent('');
     // 稍后重新生成
     setTimeout(generate, 100);
-  }, [aiLoading, stop, history, saveHistory, generate]);
+  }, [aiLoading, stop, history, saveHistory, generate, rateLimitReached]);
 
   // ---- 设置保存 ----
   const handleSaveSettings = React.useCallback(
@@ -275,7 +334,9 @@ export default function Home() {
   // ---- 当前展示内容 ----
   const displayContent = apiKey ? completion : localContent;
   const displayLoading = apiKey ? aiLoading : localLoading;
-  const displayError = apiKey ? (aiError?.message || null) : null;
+  const displayError = rateLimitReached
+    ? '明天再来吧，今天的推荐次数已用完 😋'
+    : (apiKey ? (aiError?.message || null) : null);
 
   // 防止 SSR hydration 不匹配
   if (!mounted) {
@@ -347,12 +408,22 @@ export default function Home() {
           </div>
         )}
 
+        {/* 额度提示 */}
+        {rateLimitReached && (
+          <Card className="mb-4 border-amber-200 bg-amber-50">
+            <CardContent className="p-4 text-center">
+              <p className="text-amber-700 font-medium text-sm">🔒 今日推荐次数已用完</p>
+              <p className="text-amber-500 text-xs mt-1">明天再来吧，每天最多生成 {RATE_LIMIT_MAX} 次推荐</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 推荐内容（可截图区域） */}
         <div ref={shareRef}>
         <RecommendCard
           content={displayContent}
           isLoading={displayLoading}
-          error={displayError}
+          error={rateLimitReached ? null : displayError}
           dateStr={getDateStr()}
         />
 
@@ -369,10 +440,15 @@ export default function Home() {
         <div className="flex gap-3 mt-4">
           <Button
             onClick={generate}
-            disabled={displayLoading}
-            className="flex-1 h-12 text-base font-bold gradient-btn border-0 shadow-lg shadow-purple-500/20"
+            disabled={displayLoading || rateLimitReached}
+            className={cn(
+              'flex-1 h-12 text-base font-bold gradient-btn border-0 shadow-lg shadow-purple-500/20',
+              rateLimitReached && 'opacity-50 cursor-not-allowed'
+            )}
           >
-            {displayLoading ? (
+            {rateLimitReached ? (
+              '🔒 明天再来吧'
+            ) : displayLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 生成中…
@@ -385,8 +461,11 @@ export default function Home() {
             variant="outline"
             size="icon"
             onClick={refresh}
-            disabled={displayLoading}
-            className="h-12 w-12 shrink-0"
+            disabled={displayLoading || rateLimitReached}
+            className={cn(
+              'h-12 w-12 shrink-0',
+              rateLimitReached && 'opacity-50 cursor-not-allowed'
+            )}
             title="换一天"
           >
             <RefreshCw className={cn('h-5 w-5', displayLoading && 'animate-spin')} />
