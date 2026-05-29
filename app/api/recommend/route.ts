@@ -24,11 +24,18 @@ interface RecommendRequest {
   userId?: string;
   weather?: string;
   city?: string;
-  ingredients?: string[]; // 用户冰箱中的食材（拍照识别）
+  ingredients?: string[];
+}
+
+interface RecommendationJSON {
+  cook: { dish: string; reason: string; quickTip: string; ingredients: string };
+  takeout: { dish: string; reason: string; tip: string };
+  eatOut: { type: string; dish: string; tip: string };
 }
 
 interface CachedRecommendation {
-  content: string;
+  content: string; // Markdown 原文（兼容旧缓存）
+  json?: RecommendationJSON; // JSON 结构化数据
   createdAt: number;
 }
 
@@ -182,6 +189,27 @@ function extractDishNames(content: string): string[] {
   return dishes.filter(Boolean);
 }
 
+// ---- 将 Markdown 解析为 JSON 结构 ----
+function parseMarkdownToJSON(content: string): RecommendationJSON {
+  const cook = {
+    dish: content.match(/\*\*推荐菜[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+    reason: content.match(/\*\*理由[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+    quickTip: content.match(/\*\*快手秘籍[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+    ingredients: content.match(/\*\*食材清单[：:（(（]单人份[）)]\*\*\s*(.+)/)?.[1]?.trim() || '',
+  };
+  const takeout = {
+    dish: content.match(/\*\*推荐点[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+    reason: content.match(/\*\*理由[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+    tip: content.match(/\*\*凑单小贴士[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+  };
+  const eatOut = {
+    type: content.match(/\*\*推荐餐厅类型[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+    dish: content.match(/\*\*必点菜品[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+    tip: content.match(/\*\*单人友好提示[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+  };
+  return { cook, takeout, eatOut };
+}
+
 // ---- 构建 System Prompt ----
 function buildSystemPrompt(
   date: string,
@@ -318,8 +346,14 @@ export async function POST(req: NextRequest) {
       const cached = await redis.get<CachedRecommendation>(cacheKey);
       if (cached?.content) {
         console.log(`[Cache HIT] ${cacheKey}`);
-        return new Response(cached.content, {
-          headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Cache': 'HIT' },
+        // 优先返回 JSON 结构，兼容旧缓存
+        const jsonData = cached.json || parseMarkdownToJSON(cached.content);
+        return Response.json({
+          success: true,
+          data: jsonData,
+          fromCache: true,
+        }, {
+          headers: { 'X-Cache': 'HIT' },
         });
       }
     } catch (cacheError) {
@@ -368,15 +402,18 @@ export async function POST(req: NextRequest) {
     }
 
     const reader = textStream.body.getReader();
+    const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
+              // 解析为 JSON 并缓存
+              const jsonData = parseMarkdownToJSON(fullContent);
               const dishes = extractDishNames(fullContent);
               Promise.allSettled([
-                redis.set(cacheKey, { content: fullContent, createdAt: Date.now() }, { ex: cacheTTL }).catch(() => {}),
+                redis.set(cacheKey, { content: fullContent, json: jsonData, createdAt: Date.now() }, { ex: cacheTTL }).catch(() => {}),
                 saveToBlacklist(userId, dishes),
                 userId ? saveRecommendation(userId, date, fullContent) : Promise.resolve(),
                 userId ? savePreferencesHash(userId, currentHash) : Promise.resolve(),
@@ -390,7 +427,7 @@ export async function POST(req: NextRequest) {
         } catch (streamError) {
           Sentry.captureException(streamError, {
             tags: { api: 'recommend', phase: 'streaming' },
-            extra: { userId, date, provider },
+            extra: { userId, date },
           });
           controller.error(streamError);
         }

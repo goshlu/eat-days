@@ -9,8 +9,16 @@ import { cn } from '@/lib/utils';
 import { DislikeButton } from '@/components/dislike-button';
 import { RecommendSkeleton } from '@/components/recommend-skeleton';
 
+// ---- 推荐数据类型 ----
+interface RecommendationJSON {
+  cook: { dish: string; reason: string; quickTip: string; ingredients: string };
+  takeout: { dish: string; reason: string; tip: string };
+  eatOut: { type: string; dish: string; tip: string };
+}
+
 interface RecommendCardProps {
   content: string;
+  recommendation?: RecommendationJSON | null;
   isLoading: boolean;
   error: string | null;
   dateStr: string;
@@ -49,7 +57,99 @@ function getSectionStyle(title: string) {
   return null;
 }
 
-// 自定义 Markdown 渲染
+// ---- JSON 推荐渲染组件 ----
+function RecommendationJSONContent({ data, onDisliked }: { data: RecommendationJSON; onDisliked?: (dishName: string) => void }) {
+  const sections = [
+    {
+      title: '👩‍🍳 今日做饭',
+      style: {
+        bg: 'bg-gradient-to-br from-orange-50 to-amber-50',
+        badge: 'bg-orange-100 text-orange-700 hover:bg-orange-100',
+        icon: <Utensils className="h-4 w-4" />,
+        label: '≤30分钟',
+      },
+      items: [
+        { label: '推荐菜', value: data.cook.dish },
+        { label: '理由', value: data.cook.reason },
+        { label: '快手秘籍', value: data.cook.quickTip },
+        { label: '食材清单', value: data.cook.ingredients },
+      ],
+      dish: data.cook.dish,
+    },
+    {
+      title: '🛵 今日外卖',
+      style: {
+        bg: 'bg-gradient-to-br from-blue-50 to-sky-50',
+        badge: 'bg-blue-100 text-blue-700 hover:bg-blue-100',
+        icon: <Bike className="h-4 w-4" />,
+        label: '单人餐',
+      },
+      items: [
+        { label: '推荐点', value: data.takeout.dish },
+        { label: '理由', value: data.takeout.reason },
+        { label: '凑单小贴士', value: data.takeout.tip },
+      ],
+      dish: data.takeout.dish,
+    },
+    {
+      title: '🚶 出去吃',
+      style: {
+        bg: 'bg-gradient-to-br from-green-50 to-emerald-50',
+        badge: 'bg-green-100 text-green-700 hover:bg-green-100',
+        icon: <MapPin className="h-4 w-4" />,
+        label: '单人友好',
+      },
+      items: [
+        { label: '推荐餐厅类型', value: data.eatOut.type },
+        { label: '必点菜品', value: data.eatOut.dish },
+        { label: '单人友好提示', value: data.eatOut.tip },
+      ],
+      dish: data.eatOut.dish,
+    },
+  ];
+
+  return (
+    <div className="space-y-0">
+      {sections.map((section, i) => (
+        <div
+          key={i}
+          className={cn(
+            'rounded-xl p-4 mb-4 last:mb-0',
+            'animate-in fade-in slide-in-from-bottom-2 duration-300',
+            section.style.bg,
+          )}
+          style={{ animationDelay: `${i * 100}ms` }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xl">{section.title.split(' ')[0]}</span>
+            <h3 className="font-semibold text-gray-800 text-sm">
+              {section.title.replace(/^[^\s]+\s*/, '')}
+            </h3>
+            <Badge variant="secondary" className={cn('text-[10px] px-2', section.style.badge)}>
+              {section.style.icon}
+              <span className="ml-1">{section.style.label}</span>
+            </Badge>
+          </div>
+          <div className="space-y-1.5">
+            {section.items.map((item, j) => (
+              <p key={j} className="text-sm leading-relaxed">
+                <strong className="text-gray-800 font-semibold">{item.label}：</strong>
+                <span className="text-gray-600">{item.value || '暂无'}</span>
+              </p>
+            ))}
+          </div>
+          {section.dish && onDisliked && (
+            <div className="mt-2 pt-2 border-t border-gray-200/50 flex justify-end">
+              <DislikeButton dishName={section.dish} onDisliked={onDisliked} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- 自定义 Markdown 渲染 ----
 function MarkdownContent({ content }: { content: string }) {
   return (
     <ReactMarkdown
@@ -122,9 +222,9 @@ function extractDishFromSection(section: string): string | null {
   return null;
 }
 
-export function RecommendCard({ content, isLoading, error, dateStr, onDisliked }: RecommendCardProps) {
+export function RecommendCard({ content, recommendation, isLoading, error, dateStr, onDisliked }: RecommendCardProps) {
   // 空状态
-  if (!isLoading && !content && !error) {
+  if (!isLoading && !content && !recommendation && !error) {
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12">
@@ -141,12 +241,12 @@ export function RecommendCard({ content, isLoading, error, dateStr, onDisliked }
   }
 
   // 加载状态 - 骨架屏
-  if (isLoading && !content) {
+  if (isLoading && !content && !recommendation) {
     return <RecommendSkeleton />;
   }
 
   // 错误状态
-  if (error && !content) {
+  if (error && !content && !recommendation) {
     return (
       <Card className="border-destructive/50">
         <CardContent className="flex flex-col items-center justify-center py-12">
@@ -158,8 +258,28 @@ export function RecommendCard({ content, isLoading, error, dateStr, onDisliked }
     );
   }
 
-  // 结果展示（支持流式更新）
-  // 解析 Markdown 内容，按 ## 分割板块
+  // JSON 渲染（优先）
+  if (recommendation) {
+    return (
+      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <Card className="overflow-hidden gradient-header border-0">
+          <CardHeader className="py-3 px-5">
+            <CardTitle className="text-white text-base font-bold flex items-center gap-2">
+              <span>🗓</span>
+              <span>{dateStr} 推荐</span>
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="overflow-hidden">
+          <CardContent className="p-5">
+            <RecommendationJSONContent data={recommendation} onDisliked={onDisliked} />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Markdown 渲染（兼容）
   const sections = content.split(/(?=## )/).filter(Boolean);
 
   return (

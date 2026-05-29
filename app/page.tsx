@@ -15,6 +15,13 @@ import { ShareButton } from '@/components/share-button';
 import { RefreshCw, Utensils, Bike, MapPin, Loader2, Clock, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// ---- 推荐数据类型 ----
+interface RecommendationJSON {
+  cook: { dish: string; reason: string; quickTip: string; ingredients: string };
+  takeout: { dish: string; reason: string; tip: string };
+  eatOut: { type: string; dish: string; tip: string };
+}
+
 // ============================================================
 // 一人食·川菜推荐官 — 主页面
 // ============================================================
@@ -123,6 +130,7 @@ export default function Home() {
 
   // 本地推荐状态
   const [localContent, setLocalContent] = React.useState('');
+  const [localRecommendation, setLocalRecommendation] = React.useState<RecommendationJSON | null>(null);
   const [localLoading, setLocalLoading] = React.useState(false);
 
   // 每日额度状态
@@ -184,6 +192,8 @@ export default function Home() {
   const blacklist = React.useMemo(() => history.map((h) => h.dish), [history]);
 
   // ---- useCompletion（AI 模式） ----
+  const [aiRecommendation, setAiRecommendation] = React.useState<RecommendationJSON | null>(null);
+  
   const {
     completion,
     isLoading: aiLoading,
@@ -198,6 +208,24 @@ export default function Home() {
       const takeoutMatch = completion.match(/\*\*推荐点[：:]\*\*\s*(.+)/);
       if (cookMatch?.[1]) addHistoryDish(cookMatch[1].trim());
       if (takeoutMatch?.[1]) addHistoryDish(takeoutMatch[1].trim());
+      // 解析为 JSON
+      const cook = {
+        dish: cookMatch?.[1]?.trim() || '',
+        reason: completion.match(/\*\*理由[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+        quickTip: completion.match(/\*\*快手秘籍[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+        ingredients: completion.match(/\*\*食材清单[：:（(（]单人份[）)]\*\*\s*(.+)/)?.[1]?.trim() || '',
+      };
+      const takeout = {
+        dish: takeoutMatch?.[1]?.trim() || '',
+        reason: completion.match(/\*\*理由[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+        tip: completion.match(/\*\*凑单小贴士[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+      };
+      const eatOut = {
+        type: completion.match(/\*\*推荐餐厅类型[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+        dish: completion.match(/\*\*必点菜品[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+        tip: completion.match(/\*\*单人友好提示[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
+      };
+      setAiRecommendation({ cook, takeout, eatOut });
       // AI 模式成功，递增本地额度计数
       const newCount = incrementRateLimit();
       if (newCount >= RATE_LIMIT_MAX) {
@@ -224,6 +252,7 @@ export default function Home() {
 
     setLocalLoading(true);
     setLocalContent('');
+    setLocalRecommendation(null);
 
     const pick = <T extends { dish: string }>(arr: T[]): T => {
       const filtered = arr.filter((d) => !blacklist.includes(d.dish));
@@ -236,23 +265,13 @@ export default function Home() {
       const takeout = pick(DISH_DB.takeout);
       const eatout = pick(DISH_DB.eatout);
 
-      const md = `## 👩‍🍳 今日做饭
-- **推荐菜：**${cook.dish}
-- **理由：**${cook.reason}
-- **快手秘籍：**${cook.tip}
-- **食材清单（单人份）：**${cook.ingredients}
+      const recommendation: RecommendationJSON = {
+        cook: { dish: cook.dish, reason: cook.reason, quickTip: cook.tip, ingredients: cook.ingredients },
+        takeout: { dish: takeout.dish, reason: takeout.reason, tip: takeout.tip },
+        eatOut: { type: eatout.dish, dish: eatout.reason, tip: eatout.tip },
+      };
 
-## 🛵 今日外卖
-- **推荐点：**${takeout.dish}
-- **理由：**${takeout.reason}
-- **凑单小贴士：**${takeout.tip}
-
-## 🚶 出去吃
-- **推荐餐厅类型：**${eatout.dish}
-- **必点菜品：**${eatout.reason}
-- **单人友好提示：**${eatout.tip}`;
-
-      setLocalContent(md);
+      setLocalRecommendation(recommendation);
       addHistoryDish(cook.dish);
       addHistoryDish(takeout.dish);
       // 本地模式成功，递增额度计数
@@ -271,6 +290,8 @@ export default function Home() {
     if (apiKey) {
       // AI 模式：通过 useCompletion 调用后端
       setLocalContent('');
+      setLocalRecommendation(null);
+      setAiRecommendation(null);
       complete('请生成今日一人食川菜推荐。', {
         body: {
           date: getApiDateStr(),
@@ -303,6 +324,8 @@ export default function Home() {
 
     setRandomLoading(true);
     setLocalContent('');
+    setLocalRecommendation(null);
+    setAiRecommendation(null);
 
     try {
       const res = await fetch(`/api/random?userId=${userId}`);
@@ -365,6 +388,7 @@ export default function Home() {
 
   // ---- 当前展示内容 ----
   const displayContent = apiKey ? completion : localContent;
+  const displayRecommendation = apiKey ? aiRecommendation : localRecommendation;
   const displayLoading = apiKey ? aiLoading : localLoading;
   const displayError = rateLimitReached
     ? '明天再来吧，今天的推荐次数已用完 😋'
@@ -454,6 +478,7 @@ export default function Home() {
         <div ref={shareRef}>
         <RecommendCard
           content={displayContent}
+          recommendation={displayRecommendation}
           isLoading={displayLoading}
           error={rateLimitReached ? null : displayError}
           dateStr={getDateStr()}
@@ -462,7 +487,7 @@ export default function Home() {
         </div>
 
         {/* 分享按钮 */}
-        {displayContent && !displayLoading && (
+        {(displayContent || displayRecommendation) && !displayLoading && (
           <div className="mt-3 flex justify-end">
             <ShareButton targetRef={shareRef as React.RefObject<HTMLElement>} dateStr={getDateStr()} />
           </div>
