@@ -4,12 +4,12 @@
 // ============================================================
 
 import { streamText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { NextRequest } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
 import { trackUserActivity } from '@/lib/activity';
+import { getLLM, checkTokenLimit, addDailyTokenCount, getTokenLimit } from '@/lib/llm';
 import { createHash } from 'crypto';
 
 // ---- 类型定义 ----
@@ -242,21 +242,6 @@ ${ingredients && ingredients.length > 0 ? '✅ 做饭板块请优先使用用户
 - **单人友好提示：**xxx`;
 }
 
-// ---- 选择 AI Provider ----
-function getAIModel(provider: string, apiKey?: string) {
-  if (provider === 'deepseek') {
-    const deepseek = createOpenAI({
-      baseURL: 'https://api.deepseek.com/v1',
-      apiKey: apiKey || process.env.DEEPSEEK_API_KEY || '',
-    });
-    return deepseek.chat('deepseek-chat');
-  }
-  const openai = createOpenAI({
-    apiKey: apiKey || process.env.OPENAI_API_KEY || '',
-  });
-  return openai.chat('gpt-4o-mini');
-}
-
 // ---- POST /api/recommend ----
 export async function POST(req: NextRequest) {
   let body: RecommendRequest | null = null;
@@ -268,7 +253,6 @@ export async function POST(req: NextRequest) {
       spicyLevel = 3,
       dislikes = [],
       historyDishes = [],
-      provider = 'deepseek',
       apiKey,
       userId,
     } = body!;
@@ -285,7 +269,22 @@ export async function POST(req: NextRequest) {
       await trackUserActivity(userId);
     }
 
-    // Step 0: 检查每日额度限制
+    // Step 0: 检查 Token 限额
+    const tokenStatus = await checkTokenLimit();
+    if (!tokenStatus.allowed) {
+      console.log(`[TokenLimit] EXCEEDED: ${tokenStatus.used}/${tokenStatus.limit}`);
+      return Response.json(
+        {
+          error: 'TOKEN_LIMIT_EXCEEDED',
+          message: '今日 AI 调用额度已用完，请明天再来',
+          used: tokenStatus.used,
+          limit: tokenStatus.limit,
+        },
+        { status: 429 },
+      );
+    }
+
+    // Step 0.5: 检查每日请求额度限制
     const clientId = getClientId(req, userId);
     const rateLimitKey = getRateLimitKey(clientId, date);
     try {
@@ -299,7 +298,6 @@ export async function POST(req: NextRequest) {
       }
     } catch (rateLimitError) {
       console.warn('[RateLimit] Redis unavailable:', rateLimitError);
-      // Redis 不可用时不限流，继续处理
     }
 
     // Step 1: 检查 Redis 缓存（缓存命中不消耗额度）
@@ -345,13 +343,20 @@ export async function POST(req: NextRequest) {
 
     // Step 3: 构建 Prompt 并调用 AI
     const systemPrompt = buildSystemPrompt(date, spicyLevel, dislikes, blacklist, body?.weather, body?.city, body?.ingredients);
-    const model = getAIModel(provider, apiKey);
+    const { model } = getLLM(apiKey);
 
     const result = streamText({
       model,
       system: systemPrompt,
       prompt: prompt || '请生成今日一人食川菜推荐。',
       temperature: 0.85,
+      onFinish: async ({ usage }) => {
+        // 记录 token 用量
+        if (usage?.totalTokens) {
+          const newTotal = await addDailyTokenCount(usage.totalTokens);
+          console.log(`[Token] Used ${usage.totalTokens}, Daily total: ${newTotal}/${getTokenLimit()}`);
+        }
+      },
     });
 
     // Step 4: 包装流式响应
