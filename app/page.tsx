@@ -12,6 +12,7 @@ import { UserNav } from '@/components/user-nav';
 import { WeatherBadge } from '@/components/weather-badge';
 import { ShareButton } from '@/components/share-button';
 import { VoiceControl } from '@/components/voice-control';
+import { VoiceFeedbackButton } from '@/components/voice-feedback-button';
 import { RefreshCw, Loader2, Shuffle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trackRecommendationShown, trackSettingsUpdated } from '@/lib/analytics';
@@ -133,6 +134,42 @@ export default function Home() {
       refresh();
     }
   }, [generate, refresh]);
+
+  // 语音反馈处理
+  const handleVoiceFeedback = React.useCallback((feedback: {
+    transcript: string;
+    sentiment: 'positive' | 'negative' | 'neutral';
+    suggestions: {
+      spicyLevel?: number;
+      preferredIngredients?: string[];
+      dislikedIngredients?: string[];
+      preferredDishes?: string[];
+    };
+    response: string;
+  }) => {
+    const { suggestions, sentiment } = feedback;
+
+    // 更新辣度偏好
+    if (suggestions.spicyLevel) {
+      setSpicyLevel(suggestions.spicyLevel);
+    }
+
+    // 更新忌口列表
+    if (suggestions.dislikedIngredients && suggestions.dislikedIngredients.length > 0) {
+      setDislikes(prev => {
+        const newDislikes = [...new Set([...prev, ...suggestions.dislikedIngredients!])];
+        return newDislikes;
+      });
+    }
+
+    // 如果是负向反馈或有具体修改意见，自动刷新推荐
+    if (sentiment === 'negative' || suggestions.spicyLevel || suggestions.dislikedIngredients) {
+      setTimeout(() => generate(), 500);
+    }
+
+    // 保存偏好到本地存储
+    savePrefs();
+  }, [savePrefs]);
   
   const {
     completion,
@@ -504,6 +541,14 @@ export default function Home() {
           <p className="mt-1">MIT © 2026 · 川味不将就</p>
         </footer>
       </main>
+
+      {/* 浮动语音反馈按钮 */}
+      <VoiceFeedbackButton
+        currentRecommendation={displayContent || undefined}
+        userId={userId}
+        onFeedback={handleVoiceFeedback}
+        disabled={displayLoading}
+      />
     </div>
   );
 }
