@@ -11,6 +11,7 @@ import { RecommendCard } from '@/components/recommend-card';
 import { UserNav } from '@/components/user-nav';
 import { WeatherBadge } from '@/components/weather-badge';
 import { PhotoRecognize } from '@/components/photo-recognize';
+import { ShareButton } from '@/components/share-button';
 import { RefreshCw, Utensils, Bike, MapPin, Loader2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -94,6 +95,7 @@ export default function Home() {
   const [ingredients, setIngredients] = React.useState<string[]>([]);
   const [history, setHistory] = React.useState<{ dish: string; date: number }[]>([]);
   const [mounted, setMounted] = React.useState(false);
+  const shareRef = React.useRef<HTMLDivElement>(null);
 
   // 本地推荐状态
   const [localContent, setLocalContent] = React.useState('');
@@ -345,13 +347,23 @@ export default function Home() {
           </div>
         )}
 
-        {/* 推荐内容 */}
+        {/* 推荐内容（可截图区域） */}
+        <div ref={shareRef}>
         <RecommendCard
           content={displayContent}
           isLoading={displayLoading}
           error={displayError}
           dateStr={getDateStr()}
         />
+
+        </div>
+
+        {/* 分享按钮 */}
+        {displayContent && !displayLoading && (
+          <div className="mt-3 flex justify-end">
+            <ShareButton targetRef={shareRef as React.RefObject<HTMLElement>} dateStr={getDateStr()} />
+          </div>
+        )}
 
         {/* 操作按钮 */}
         <div className="flex gap-3 mt-4">
