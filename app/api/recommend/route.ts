@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
 import { trackUserActivity } from '@/lib/activity';
 import { getLLM, checkTokenLimit, addDailyTokenCount, getTokenLimit } from '@/lib/llm';
+import { createRequestLogger } from '@/lib/logger';
 import { createHash } from 'crypto';
 
 // ---- 类型定义 ----
@@ -275,6 +276,9 @@ ${ingredients && ingredients.length > 0 ? '✅ 做饭板块请优先使用用户
 
 // ---- POST /api/recommend ----
 export async function POST(req: NextRequest) {
+  const requestId = req.headers.get('x-request-id') || 'unknown';
+  const logger = createRequestLogger(requestId);
+
   let body: RecommendRequest | null = null;
   try {
     body = (await req.json()) as RecommendRequest;
@@ -284,7 +288,6 @@ export async function POST(req: NextRequest) {
       spicyLevel = 3,
       dislikes = [],
       historyDishes = [],
-      apiKey,
       userId,
     } = body!;
 
@@ -295,6 +298,8 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'spicyLevel 必须在 1-5 之间' }, { status: 400 });
     }
 
+    logger.info({ userId, date, spicyLevel }, 'Recommend request received');
+
     // 记录用户活跃状态（用于预生成）
     if (userId) {
       await trackUserActivity(userId);
@@ -303,7 +308,7 @@ export async function POST(req: NextRequest) {
     // Step 0: 检查 Token 限额
     const tokenStatus = await checkTokenLimit();
     if (!tokenStatus.allowed) {
-      console.log(`[TokenLimit] EXCEEDED: ${tokenStatus.used}/${tokenStatus.limit}`);
+      logger.warn({ used: tokenStatus.used, limit: tokenStatus.limit }, 'Token limit exceeded');
       return Response.json(
         {
           error: 'TOKEN_LIMIT_EXCEEDED',
@@ -321,14 +326,14 @@ export async function POST(req: NextRequest) {
     try {
       const currentCount = await redis.get<number>(rateLimitKey);
       if (currentCount !== null && currentCount >= RATE_LIMIT_MAX) {
-        console.log(`[RateLimit] EXCEEDED for ${clientId} on ${date} (${currentCount}/${RATE_LIMIT_MAX})`);
+        logger.warn({ clientId, date, count: currentCount }, 'Rate limit exceeded');
         return Response.json(
           { error: 'RATE_LIMIT_EXCEEDED', message: '明天再来吧，今天的推荐次数已用完 😋' },
           { status: 429 },
         );
       }
     } catch (rateLimitError) {
-      console.warn('[RateLimit] Redis unavailable:', rateLimitError);
+      logger.warn({ error: rateLimitError }, 'Rate limit Redis check failed');
     }
 
     // Step 1: 检查 Redis 缓存（缓存命中不消耗额度）
@@ -341,14 +346,14 @@ export async function POST(req: NextRequest) {
       const lastHash = await getLastPreferencesHash(userId);
       if (lastHash && lastHash !== currentHash) {
         cacheTTL = CACHE_TTL_CHANGED; // 偏好变化，缓存 2h
-        console.log(`[Cache] Preferences changed for ${userId}: ${lastHash} -> ${currentHash}`);
+        logger.info({ userId, oldHash: lastHash, newHash: currentHash }, 'Preferences changed');
       }
     }
 
     try {
       const cached = await redis.get<CachedRecommendation>(cacheKey);
       if (cached?.content) {
-        console.log(`[Cache HIT] ${cacheKey}`);
+        logger.info({ cacheKey }, 'Cache HIT');
         // 优先返回 JSON 结构，兼容旧缓存
         const jsonData = cached.json || parseMarkdownToJSON(cached.content);
         return Response.json({
@@ -360,7 +365,7 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (cacheError) {
-      console.warn('[Cache] Redis unavailable:', cacheError);
+      logger.warn({ error: cacheError }, 'Cache Redis check failed');
     }
 
     // Step 2: 获取黑名单
@@ -372,9 +377,9 @@ export async function POST(req: NextRequest) {
       if (newCount === 1) {
         await redis.expire(rateLimitKey, RATE_LIMIT_TTL);
       }
-      console.log(`[RateLimit] ${clientId} on ${date}: ${newCount}/${RATE_LIMIT_MAX}`);
+      logger.info({ clientId, date, count: newCount }, 'Rate limit incremented');
     } catch (rateLimitError) {
-      console.warn('[RateLimit] Failed to increment:', rateLimitError);
+      logger.warn({ error: rateLimitError }, 'Rate limit increment failed');
       // 递增失败不阻塞请求
     }
 
@@ -391,7 +396,7 @@ export async function POST(req: NextRequest) {
         // 记录 token 用量
         if (usage?.totalTokens) {
           const newTotal = await addDailyTokenCount(usage.totalTokens);
-          console.log(`[Token] Used ${usage.totalTokens}, Daily total: ${newTotal}/${getTokenLimit()}`);
+          logger.info({ used: usage.totalTokens, dailyTotal: newTotal, limit: getTokenLimit() }, 'Token usage recorded');
         }
       },
     });
@@ -441,10 +446,10 @@ export async function POST(req: NextRequest) {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Cache': 'MISS', 'Transfer-Encoding': 'chunked' },
     });
   } catch (error) {
-    console.error('[/api/recommend] Error:', error);
+    logger.error({ error, date: body?.date, spicyLevel: body?.spicyLevel, userId: body?.userId }, 'Recommend request failed');
     Sentry.captureException(error, {
       tags: { api: 'recommend', phase: 'request' },
-      extra: { date: body?.date, spicyLevel: body?.spicyLevel, provider: body?.provider, userId: body?.userId },
+      extra: { date: body?.date, spicyLevel: body?.spicyLevel, userId: body?.userId },
     });
     if (error instanceof SyntaxError) {
       return Response.json({ error: '请求格式错误，请检查 JSON 格式' }, { status: 400 });

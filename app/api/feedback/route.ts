@@ -5,8 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { createRequestLogger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
+  const requestId = req.headers.get('x-request-id') || 'unknown';
+  const logger = createRequestLogger(requestId);
+
   try {
     const body = await req.json();
     const {
@@ -53,14 +57,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    console.log(`[Feedback] ${rating > 0 ? '👍' : '👎'} saved: ${feedback.id}`);
+    logger.info({ feedbackId: feedback.id, rating, cookDish }, 'Feedback saved');
 
     return NextResponse.json({
       success: true,
       id: feedback.id,
     });
   } catch (error) {
-    console.error('[/api/feedback] Error:', error);
+    logger.error({ error }, 'Feedback save failed');
     return NextResponse.json(
       { error: '保存反馈失败' },
       { status: 500 },
@@ -70,6 +74,9 @@ export async function POST(req: NextRequest) {
 
 // GET - 查询反馈统计（管理员用）
 export async function GET(req: NextRequest) {
+  const requestId = req.headers.get('x-request-id') || 'unknown';
+  const logger = createRequestLogger(requestId);
+
   try {
     const { searchParams } = new URL(req.url);
     const days = parseInt(searchParams.get('days') || '7');

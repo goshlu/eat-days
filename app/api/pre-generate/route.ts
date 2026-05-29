@@ -11,6 +11,7 @@ import * as Sentry from '@sentry/nextjs';
 import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
 import { getActiveUserIds } from '@/lib/activity';
+import logger from '@/lib/logger';
 
 // ---- 类型 ----
 interface PreGenerateUser {
@@ -348,7 +349,7 @@ export async function GET() {
 
     // Step 1: 获取活跃用户 ID 集合
     let activeUserIds = await getActiveUserIds();
-    console.log(`[PreGenerate] Found ${activeUserIds.length} active users in Redis set`);
+    logger.info({ count: activeUserIds.length }, 'Found active users in Redis set');
 
     // Fallback: 如果 Redis Set 为空，从数据库获取最近 7 天有推荐记录的用户
     if (activeUserIds.length === 0) {
@@ -360,7 +361,7 @@ export async function GET() {
         distinct: ['userId'],
       });
       activeUserIds = recentUsers.map((r) => r.userId);
-      console.log(`[PreGenerate] Fallback: found ${activeUserIds.length} users from DB`);
+      logger.info({ count: activeUserIds.length }, 'Fallback: found users from DB');
     }
 
     if (activeUserIds.length === 0) {
@@ -395,13 +396,13 @@ export async function GET() {
       },
     });
 
-    console.log(`[PreGenerate] Fetched ${users.length} user profiles`);
+    logger.info({ count: users.length }, 'Fetched user profiles');
 
     // Step 3: 并发生成（带限制）
     const date = getTodayDateStr();
     const stats = await processUsers(users as PreGenerateUser[], date);
 
-    console.log(`[PreGenerate] Done: ${stats.generated} generated, ${stats.skipped} skipped, ${stats.errors} errors, ${stats.totalTokens} tokens, ${stats.duration}ms`);
+    logger.info(stats, 'Pre-generation completed');
 
     // 记录任务完成状态
     await saveTaskStatus('completed', stats);
