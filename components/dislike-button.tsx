@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { ThumbsDown, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { trackDislikeClicked } from '@/lib/analytics';
 
 interface DislikeButtonProps {
   dishName: string;
@@ -22,6 +23,8 @@ export function DislikeButton({ dishName, className, onDisliked }: DislikeButton
     if (status === 'done' || status === 'loading') return;
 
     setStatus('loading');
+    // 埋点
+    trackDislikeClicked({ dishName, userId });
 
     try {
       const res = await fetch('/api/blacklist', {

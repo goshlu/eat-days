@@ -14,6 +14,7 @@ import { PhotoRecognize } from '@/components/photo-recognize';
 import { ShareButton } from '@/components/share-button';
 import { RefreshCw, Utensils, Bike, MapPin, Loader2, Clock, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { trackRecommendationShown, trackSettingsUpdated } from '@/lib/analytics';
 
 // ---- 推荐数据类型 ----
 interface RecommendationJSON {
@@ -226,6 +227,15 @@ export default function Home() {
         tip: completion.match(/\*\*单人友好提示[：:]\*\*\s*(.+)/)?.[1]?.trim() || '',
       };
       setAiRecommendation({ cook, takeout, eatOut });
+      // 埋点
+      trackRecommendationShown({
+        cook: cook.dish,
+        takeout: takeout.dish,
+        eatOut: eatOut.dish,
+        source: 'ai',
+        spicyLevel,
+        userId,
+      });
       // AI 模式成功，递增本地额度计数
       const newCount = incrementRateLimit();
       if (newCount >= RATE_LIMIT_MAX) {
@@ -274,6 +284,15 @@ export default function Home() {
       setLocalRecommendation(recommendation);
       addHistoryDish(cook.dish);
       addHistoryDish(takeout.dish);
+      // 埋点
+      trackRecommendationShown({
+        cook: cook.dish,
+        takeout: takeout.dish,
+        eatOut: eatout.reason,
+        source: 'local',
+        spicyLevel,
+        userId,
+      });
       // 本地模式成功，递增额度计数
       const newCount = incrementRateLimit();
       if (newCount >= RATE_LIMIT_MAX) {
@@ -281,7 +300,7 @@ export default function Home() {
       }
       setLocalLoading(false);
     }, 600);
-  }, [blacklist, addHistoryDish]);
+  }, [blacklist, addHistoryDish, spicyLevel, userId]);
 
   // ---- 生成入口 ----
   const generate = React.useCallback(() => {
@@ -376,8 +395,15 @@ export default function Home() {
         STORAGE_KEY,
         JSON.stringify(settings),
       );
+      // 埋点
+      trackSettingsUpdated({
+        spicyLevel: settings.spicyLevel,
+        dislikes: settings.dislikes,
+        provider: settings.provider,
+        userId,
+      });
     },
-    [],
+    [userId],
   );
 
   // ---- 清空历史 ----

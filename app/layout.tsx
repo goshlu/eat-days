@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import AuthProvider from '@/components/auth-provider';
+import { AnalyticsProvider } from '@/components/analytics-provider';
 // @ts-ignore: CSS module declarations may be missing in this environment
 import './globals.css';
 
@@ -28,9 +29,11 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className="min-h-screen bg-[#f5f5f7] antialiased">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <AnalyticsProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </AnalyticsProvider>
         <Analytics />
         <SpeedInsights />
       </body>
