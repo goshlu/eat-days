@@ -457,6 +457,7 @@ export default function Home() {
               provider={provider}
               apiKey={apiKey}
               city={city}
+              userId={userId}
               onSave={handleSaveSettings}
             />
           </div>
