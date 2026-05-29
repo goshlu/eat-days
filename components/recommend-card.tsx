@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Utensils, Bike, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DislikeButton } from '@/components/dislike-button';
+import { RecommendSkeleton } from '@/components/recommend-skeleton';
 
 interface RecommendCardProps {
   content: string;
@@ -139,16 +140,9 @@ export function RecommendCard({ content, isLoading, error, dateStr, onDisliked }
     );
   }
 
-  // 加载状态
+  // 加载状态 - 骨架屏
   if (isLoading && !content) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-          <p className="text-muted-foreground text-sm">川菜大师正在为你精心挑选…</p>
-        </CardContent>
-      </Card>
-    );
+    return <RecommendSkeleton />;
   }
 
   // 错误状态
@@ -169,7 +163,7 @@ export function RecommendCard({ content, isLoading, error, dateStr, onDisliked }
   const sections = content.split(/(?=## )/).filter(Boolean);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* 日期头 */}
       <Card className="overflow-hidden gradient-header border-0">
         <CardHeader className="py-3 px-5">
@@ -196,7 +190,15 @@ export function RecommendCard({ content, isLoading, error, dateStr, onDisliked }
                 const style = getSectionStyle(titleLine);
 
                 return (
-                  <div key={i} className={cn('rounded-xl p-4 mb-4 last:mb-0', style?.bg || 'bg-gray-50')}>
+                  <div
+                    key={i}
+                    className={cn(
+                      'rounded-xl p-4 mb-4 last:mb-0',
+                      'animate-in fade-in slide-in-from-bottom-2 duration-300',
+                      style?.bg || 'bg-gray-50',
+                    )}
+                    style={{ animationDelay: `${i * 100}ms` }}
+                  >
                     <MarkdownContent content={section} />
                     {extractDishFromSection(section) && (
                       <div className="mt-2 pt-2 border-t border-gray-200/50 flex justify-end">
