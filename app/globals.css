@@ -197,3 +197,78 @@ body {
   background: #d1d5db;
   border-radius: 2px;
 }
+
+/* react-calendar 自定义样式 */
+.calendar-wrapper .react-calendar {
+  border: none;
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  width: 100%;
+}
+
+.calendar-wrapper .react-calendar__navigation {
+  margin-bottom: 8px;
+}
+
+.calendar-wrapper .react-calendar__navigation button {
+  min-width: 36px;
+  height: 36px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.calendar-wrapper .react-calendar__navigation button:hover {
+  background: #f3f4f6;
+}
+
+.calendar-wrapper .react-calendar__navigation button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.calendar-wrapper .react-calendar__month-view__weekdays {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9ca3af;
+  text-transform: none;
+}
+
+.calendar-wrapper .react-calendar__month-view__weekdays__weekday {
+  padding: 8px 0;
+}
+
+.calendar-wrapper .react-calendar__month-view__days__day {
+  font-size: 13px;
+  padding: 8px 0;
+  border-radius: 8px;
+}
+
+.calendar-wrapper .react-calendar__tile {
+  padding: 8px 0;
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.calendar-wrapper .react-calendar__tile--active {
+  background: #f3e8ff !important;
+  color: #7c3aed;
+}
+
+.calendar-wrapper .react-calendar__tile--now {
+  background: #faf5ff;
+}
+
+.calendar-wrapper .react-calendar__tile:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

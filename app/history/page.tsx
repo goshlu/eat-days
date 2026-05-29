@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { HistoryCard } from '@/components/history-card';
-import { ArrowLeft, Loader2, CalendarX } from 'lucide-react';
+import { HistoryCalendar } from '@/components/history-calendar';
+import { ArrowLeft, Loader2, CalendarX, List, CalendarDays } from 'lucide-react';
 
 // ---- 类型 ----
 interface HistoryEntry {
@@ -26,6 +27,7 @@ export default function HistoryPage() {
   const [entries, setEntries] = React.useState<HistoryEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [viewMode, setViewMode] = React.useState<'list' | 'calendar'>('list');
 
   React.useEffect(() => {
     if (status === 'loading') return;
@@ -131,7 +133,7 @@ export default function HistoryPage() {
       </header>
 
       <main className="max-w-lg mx-auto px-4 -mt-4 relative z-10 pb-8">
-        {/* 统计 */}
+        {/* 统计 & 视图切换 */}
         <div className="flex gap-3 mb-4">
           <Card className="flex-1">
             <CardContent className="p-3 text-center">
@@ -145,6 +147,26 @@ export default function HistoryPage() {
               <p className="text-xl font-bold">
                 {new Set(entries.map((e) => new Date(e.date).toDateString())).size}
               </p>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="p-2 flex items-center justify-center gap-1">
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => setViewMode('list')}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'calendar' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => setViewMode('calendar')}
+              >
+                <CalendarDays className="h-4 w-4" />
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -197,20 +219,24 @@ export default function HistoryPage() {
           </Card>
         )}
 
-        {/* 历史列表 */}
+        {/* 历史内容 */}
         {!loading && !error && entries.length > 0 && (
-          <div className="space-y-3">
-            {entries.map((entry, i) => (
-              <HistoryCard
-                key={entry.id}
-                entry={{
-                  ...entry,
-                  date: entry.date,
-                }}
-                defaultOpen={i === 0}
-              />
-            ))}
-          </div>
+          viewMode === 'calendar' ? (
+            <HistoryCalendar entries={entries} />
+          ) : (
+            <div className="space-y-3">
+              {entries.map((entry, i) => (
+                <HistoryCard
+                  key={entry.id}
+                  entry={{
+                    ...entry,
+                    date: entry.date,
+                  }}
+                  defaultOpen={i === 0}
+                />
+              ))}
+            </div>
+          )
         )}
 
         {/* Footer */}
