@@ -95,6 +95,7 @@ function RecommendationJSONContent({ data, onDisliked }: { data: RecommendationJ
         { label: '凑单小贴士', value: data.takeout.tip },
       ],
       dish: data.takeout.dish,
+      searchUrl: data.takeout.dish ? `https://meituan.com/search?keyword=${encodeURIComponent(data.takeout.dish)}` : undefined,
     },
     {
       title: '🚶 出去吃',
@@ -142,6 +143,17 @@ function RecommendationJSONContent({ data, onDisliked }: { data: RecommendationJ
                 <span className="text-gray-600">{item.value || '暂无'}</span>
               </p>
             ))}
+            {/* 外卖搜索链接 */}
+            {section.searchUrl && (
+              <a
+                href={section.searchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline mt-2"
+              >
+                🍔 点此搜索
+              </a>
+            )}
           </div>
           {section.dish && onDisliked && (
             <div className="mt-2 pt-2 border-t border-gray-200/50 flex justify-end">
