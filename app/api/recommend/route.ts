@@ -19,8 +19,6 @@ interface RecommendRequest {
   spicyLevel: number;
   dislikes: string[];
   historyDishes: string[];
-  provider?: 'deepseek' | 'openai';
-  apiKey?: string;
   userId?: string;
   weather?: string;
   city?: string;
@@ -377,7 +375,7 @@ export async function POST(req: NextRequest) {
 
     // Step 3: 构建 Prompt 并调用 AI
     const systemPrompt = buildSystemPrompt(date, spicyLevel, dislikes, blacklist, body?.weather, body?.city, body?.ingredients);
-    const { model } = getLLM(apiKey);
+    const { model } = await getLLM();
 
     const result = streamText({
       model,

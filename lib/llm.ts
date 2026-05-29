@@ -1,10 +1,10 @@
 // ============================================================
 // LLM Provider 抽象层
-// 根据环境变量 LLM_PROVIDER 返回不同的模型实例
+// 使用 LLM_API_KEY 环境变量，支持 Redis 动态更新
 // 支持: openai / groq / deepseek
 // ============================================================
 
-import { createOpenAI, OpenAIProvider } from '@ai-sdk/openai';
+import { createOpenAI } from '@ai-sdk/openai';
 
 export type LLMProvider = 'openai' | 'groq' | 'deepseek';
 
@@ -13,45 +13,94 @@ const PROVIDER_CONFIG = {
   openai: {
     baseURL: 'https://api.openai.com/v1',
     defaultModel: 'gpt-4o-mini',
-    envKey: 'OPENAI_API_KEY',
   },
   groq: {
     baseURL: 'https://api.groq.com/openai/v1',
     defaultModel: 'llama-3.1-70b-versatile',
-    envKey: 'GROQ_API_KEY',
   },
   deepseek: {
     baseURL: 'https://api.deepseek.com/v1',
     defaultModel: 'deepseek-chat',
-    envKey: 'DEEPSEEK_API_KEY',
   },
 } as const;
 
-// ---- 获取当前 Provider 名称 ----
-export function getProviderName(): LLMProvider {
-  const provider = process.env.LLM_PROVIDER?.toLowerCase() as LLMProvider;
-  if (provider && provider in PROVIDER_CONFIG) {
-    return provider;
+// Redis key 存储动态配置
+const REDIS_KEY_CONFIG = 'llm:config';
+
+interface LLMConfig {
+  provider: LLMProvider;
+  apiKey: string;
+}
+
+// ---- 获取当前配置（优先 Redis，降级环境变量） ----
+async function getLLMConfig(): Promise<LLMConfig> {
+  // 默认配置
+  const defaultProvider = (process.env.LLM_PROVIDER?.toLowerCase() as LLMProvider) || 'deepseek';
+  const defaultApiKey = process.env.LLM_API_KEY || '';
+
+  try {
+    const { redis } = await import('./redis');
+    const cached = await redis.get<LLMConfig>(REDIS_KEY_CONFIG);
+    if (cached?.apiKey) {
+      return cached;
+    }
+  } catch {
+    // Redis 不可用，使用默认配置
   }
-  return 'deepseek'; // 默认使用 deepseek
+
+  return {
+    provider: defaultProvider,
+    apiKey: defaultApiKey,
+  };
+}
+
+// ---- 获取当前 Provider 名称 ----
+export async function getProviderName(): Promise<LLMProvider> {
+  const config = await getLLMConfig();
+  return config.provider;
 }
 
 // ---- 获取 LLM 模型实例 ----
-export function getLLM(customApiKey?: string, customProvider?: LLMProvider) {
-  const providerName = customProvider || getProviderName();
-  const config = PROVIDER_CONFIG[providerName];
-
-  const apiKey = customApiKey || process.env[config.envKey] || '';
+export async function getLLM() {
+  const config = await getLLMConfig();
+  const providerConfig = PROVIDER_CONFIG[config.provider] || PROVIDER_CONFIG.deepseek;
 
   const openai = createOpenAI({
-    baseURL: config.baseURL,
-    apiKey,
+    baseURL: providerConfig.baseURL,
+    apiKey: config.apiKey,
   });
 
   return {
-    model: openai.chat(config.defaultModel),
-    provider: providerName,
-    modelId: config.defaultModel,
+    model: openai.chat(providerConfig.defaultModel),
+    provider: config.provider,
+    modelId: providerConfig.defaultModel,
+  };
+}
+
+// ---- 更新 LLM 配置（管理员用） ----
+export async function updateLLMConfig(newConfig: Partial<LLMConfig>): Promise<LLMConfig> {
+  const current = await getLLMConfig();
+  const updated = { ...current, ...newConfig };
+
+  try {
+    const { redis } = await import('./redis');
+    await redis.set(REDIS_KEY_CONFIG, updated);
+  } catch {
+    // Redis 不可用
+  }
+
+  return updated;
+}
+
+// ---- 获取当前配置（脱敏，用于展示） ----
+export async function getLLMConfigSafe(): Promise<{ provider: LLMProvider; apiKeyMasked: string }> {
+  const config = await getLLMConfig();
+  const masked = config.apiKey
+    ? `${config.apiKey.slice(0, 8)}${'*'.repeat(8)}${config.apiKey.slice(-4)}`
+    : '未配置';
+  return {
+    provider: config.provider,
+    apiKeyMasked: masked,
   };
 }
 
@@ -84,7 +133,6 @@ export async function addDailyTokenCount(tokens: number): Promise<number> {
     const { redis } = await import('./redis');
     const key = `${TOKEN_COUNT_KEY}:${getTodayKey()}`;
     const newCount = await redis.incrby(key, tokens);
-    // 设置 24 小时过期
     if (newCount === tokens) {
       await redis.expire(key, 86400);
     }
