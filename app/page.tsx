@@ -12,7 +12,7 @@ import { UserNav } from '@/components/user-nav';
 import { WeatherBadge } from '@/components/weather-badge';
 import { PhotoRecognize } from '@/components/photo-recognize';
 import { ShareButton } from '@/components/share-button';
-import { RefreshCw, Utensils, Bike, MapPin, Loader2, Clock } from 'lucide-react';
+import { RefreshCw, Utensils, Bike, MapPin, Loader2, Clock, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ============================================================
@@ -264,6 +264,38 @@ export default function Home() {
     }, 600);
   }, [blacklist, addHistoryDish]);
 
+  // ---- 随机惊喜（从历史中随机选一天） ----
+  const [randomLoading, setRandomLoading] = React.useState(false);
+
+  const randomSurprise = React.useCallback(async () => {
+    if (!userId) {
+      // 未登录时直接调用普通推荐
+      generate();
+      return;
+    }
+
+    setRandomLoading(true);
+    setLocalContent('');
+
+    try {
+      const res = await fetch(`/api/random?userId=${userId}`);
+      const data = await res.json();
+
+      if (data.success && data.data) {
+        // 有历史记录，显示随机一天
+        setLocalContent(data.data.content);
+      } else {
+        // 没有历史，降级调用正常推荐
+        generate();
+      }
+    } catch {
+      // 出错时降级调用正常推荐
+      generate();
+    } finally {
+      setRandomLoading(false);
+    }
+  }, [userId, generate]);
+
   // ---- 生成入口 ----
   const generate = React.useCallback(() => {
     if (rateLimitReached) return;
@@ -440,7 +472,7 @@ export default function Home() {
         <div className="flex gap-3 mt-4">
           <Button
             onClick={generate}
-            disabled={displayLoading || rateLimitReached}
+            disabled={displayLoading || randomLoading || rateLimitReached}
             className={cn(
               'flex-1 h-12 text-base font-bold gradient-btn border-0 shadow-lg shadow-purple-500/20',
               rateLimitReached && 'opacity-50 cursor-not-allowed'
@@ -459,9 +491,25 @@ export default function Home() {
           </Button>
           <Button
             variant="outline"
+            onClick={randomSurprise}
+            disabled={displayLoading || randomLoading || rateLimitReached}
+            className={cn(
+              'h-12 shrink-0 px-3',
+              rateLimitReached && 'opacity-50 cursor-not-allowed'
+            )}
+            title="随机惊喜：回顾往日推荐"
+          >
+            {randomLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Shuffle className="h-5 w-5" />
+            )}
+          </Button>
+          <Button
+            variant="outline"
             size="icon"
             onClick={refresh}
-            disabled={displayLoading || rateLimitReached}
+            disabled={displayLoading || randomLoading || rateLimitReached}
             className={cn(
               'h-12 w-12 shrink-0',
               rateLimitReached && 'opacity-50 cursor-not-allowed'
