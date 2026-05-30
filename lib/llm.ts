@@ -36,7 +36,12 @@ interface LLMConfig {
 async function getLLMConfig(): Promise<LLMConfig> {
   // 默认配置
   const defaultProvider = (process.env.LLM_PROVIDER?.toLowerCase() as LLMProvider) || 'deepseek';
-  const defaultApiKey = process.env.LLM_API_KEY || '';
+  const providerEnvKey: Record<LLMProvider, string | undefined> = {
+    openai: process.env.OPENAI_API_KEY,
+    groq: process.env.GROQ_API_KEY,
+    deepseek: process.env.DEEPSEEK_API_KEY,
+  };
+  const defaultApiKey = process.env.LLM_API_KEY || providerEnvKey[defaultProvider] || '';
 
   try {
     const { redis } = await import('./redis');
@@ -64,6 +69,10 @@ export async function getProviderName(): Promise<LLMProvider> {
 export async function getLLM() {
   const config = await getLLMConfig();
   const providerConfig = PROVIDER_CONFIG[config.provider] || PROVIDER_CONFIG.deepseek;
+
+  if (!config.apiKey) {
+    throw new Error(`LLM_API_KEY_MISSING:${config.provider}`);
+  }
 
   const openai = createOpenAI({
     baseURL: providerConfig.baseURL,

@@ -5,11 +5,10 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { randomUUID } from 'crypto';
 
 export function middleware(request: NextRequest) {
   // 生成 requestId
-  const requestId = request.headers.get('x-request-id') || randomUUID();
+  const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
 
   // 克隆请求头并添加 requestId
   const requestHeaders = new Headers(request.headers);

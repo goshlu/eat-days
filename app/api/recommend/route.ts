@@ -40,11 +40,36 @@ interface CachedRecommendation {
 }
 
 // ---- 常量 ----
+interface FallbackDish {
+  name: string;
+  reason: string;
+  tip: string;
+  ingredients?: string;
+}
+
 const CACHE_TTL_STABLE = 24 * 60 * 60; // 偏好不变时缓存 24 小时
 const CACHE_TTL_CHANGED = 2 * 60 * 60; // 偏好改变时缓存 2 小时
 const BLACKLIST_TTL_DAYS = 7;
 const RATE_LIMIT_MAX = 3; // 每用户每天最多生成 3 次
 const RATE_LIMIT_TTL = 86400; // 24 小时过期
+
+const FALLBACK_COOK_DISHES: FallbackDish[] = [
+  { name: '麻婆豆腐', reason: '经典川味，下饭稳，单人份成本低', tip: '豆腐焯水后再烧，最后薄薄勾芡更挂味', ingredients: '嫩豆腐半盒、猪肉末80g、豆瓣酱1勺' },
+  { name: '鱼香鸡蛋', reason: '不用鱼也有鱼香味，酸甜辣很开胃', tip: '先调好鱼香汁，鸡蛋炒嫩后回锅十秒就出锅', ingredients: '鸡蛋2个、青椒半个、木耳一小把' },
+  { name: '青椒肉丝', reason: '快手家常川味，十几分钟就能吃上热饭', tip: '肉丝先用淀粉和生抽抓匀，热锅快炒不柴', ingredients: '猪里脊100g、青椒1个、蒜2瓣' },
+];
+
+const FALLBACK_TAKEOUT_DISHES: FallbackDish[] = [
+  { name: '小碗菜·回锅肉套餐', reason: '单人套餐常见，米饭和素菜搭配完整', tip: '加一份冰粉或紫菜蛋花汤，预算约22-28元' },
+  { name: '重庆小面加煎蛋', reason: '出餐快，红油香，独居晚饭不费脑', tip: '备注少汤宽面，另加煎蛋更顶饱' },
+  { name: '冒菜单人荤素套餐', reason: '想吃麻辣又不想点一桌菜时很合适', tip: '选土豆、藕片、午餐肉，控制在25元左右' },
+];
+
+const FALLBACK_EATOUT_DISHES: FallbackDish[] = [
+  { name: '豆花饭配烧椒皮蛋', reason: '一人吃不尴尬，翻台快，川味扎实', tip: '选靠边小桌或吧台位，点一荤一素刚好' },
+  { name: '川味米线加酥肉', reason: '热汤热辣，适合一个人快速解决一餐', tip: '避开饭点高峰，点小份米线更舒服' },
+  { name: '商场B1小碗菜', reason: '菜品选择多，小份友好，不用排长队', tip: '优先选明档小份菜，半小时内吃完离场' },
+];
 
 // ---- 辣度映射 ----
 const SPICY_MAP: Record<number, string> = {
@@ -98,6 +123,42 @@ function getClientId(req: NextRequest, userId?: string): string {
 // ---- 构建限流 Key ----
 function getRateLimitKey(clientId: string, date: string): string {
   return `rate:limit:${clientId}:${date}`;
+}
+
+function pickFallbackDish(dishes: FallbackDish[], blacklist: string[], dislikes: string[]): FallbackDish {
+  const blocked = [...blacklist, ...dislikes].filter(Boolean);
+  return dishes.find((dish) => !blocked.some((item) => dish.name.includes(item))) || dishes[0];
+}
+
+function buildFallbackRecommendation(
+  date: string,
+  spicyLevel: number,
+  dislikes: string[],
+  blacklist: string[],
+): string {
+  const cook = pickFallbackDish(FALLBACK_COOK_DISHES, blacklist, dislikes);
+  const takeout = pickFallbackDish(FALLBACK_TAKEOUT_DISHES, blacklist, dislikes);
+  const eatOut = pickFallbackDish(FALLBACK_EATOUT_DISHES, blacklist, dislikes);
+  const spicyNote = spicyLevel <= 2 ? '已按低辣处理，少放红油也有香气' : '辣度够劲但不过火，适合今天直接开吃';
+
+  return `## 👩‍🍳 今日做饭
+- **推荐菜：**${cook.name}
+- **理由：**${cook.reason}
+- **快手秘籍：**${cook.tip}
+- **食材清单（单人份）：**${cook.ingredients || '按单人份准备主料不超过3种'}
+
+## 🛵 今日外卖
+- **推荐点：**${takeout.name}
+- **理由：**${takeout.reason}
+- **凑单小贴士：**${takeout.tip}
+
+## 🚶 出去吃
+- **推荐餐厅类型：**${eatOut.name}
+- **必点菜品：**${eatOut.name}
+- **单人友好提示：**${eatOut.tip}
+
+## 💬 大厨点评
+- **点评：**${date} 本地兜底推荐已启用；${spicyNote}。`;
 }
 
 // ---- 获取黑名单 ----
@@ -453,6 +514,22 @@ export async function POST(req: NextRequest) {
     });
     if (error instanceof SyntaxError) {
       return Response.json({ error: '请求格式错误，请检查 JSON 格式' }, { status: 400 });
+    }
+    if (error instanceof Error && error.message.startsWith('LLM_API_KEY_MISSING')) {
+      const provider = error.message.split(':')[1] || 'llm';
+      logger.warn({ provider }, 'LLM API key missing, using local fallback recommendation');
+      const fallbackContent = buildFallbackRecommendation(
+        body?.date || new Date().toISOString().slice(0, 10),
+        body?.spicyLevel || 3,
+        body?.dislikes || [],
+        body?.historyDishes || [],
+      );
+      return new Response(fallbackContent, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Fallback': 'local',
+        },
+      });
     }
     return Response.json({ error: '服务器内部错误，请稍后重试' }, { status: 500 });
   }

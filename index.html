@@ -184,6 +184,13 @@
               <div class="font-bold text-blue-800 text-base" id="takeoutDish"></div>
               <div class="text-sm text-gray-600 leading-relaxed" id="takeoutReason"></div>
               <div class="text-sm text-blue-700 font-medium" id="takeoutTip"></div>
+              <a
+                id="takeoutLink"
+                href="#"
+                target="_blank"
+                rel="nofollow sponsored noopener noreferrer"
+                class="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+              >🍔 点此搜索</a>
             </div>
           </div>
 
@@ -719,6 +726,32 @@ function extractField(text, key) {
 }
 
 // ---- 渲染结果 ----
+function getMeituanUnionSearchUrl(keyword) {
+  const url = new URL('https://union.meituan.com/search');
+  url.searchParams.set('keyword', String(keyword || '').trim());
+  return url.toString();
+}
+
+function trackAffiliateClick(keyword, href) {
+  const payload = JSON.stringify({
+    provider: 'meituan',
+    keyword,
+    href
+  });
+
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon('/api/affiliate-click', new Blob([payload], { type: 'application/json' }));
+    return;
+  }
+
+  fetch('/api/affiliate-click', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+    keepalive: true
+  }).catch(() => {});
+}
+
 function renderResult(dateStr, data) {
   document.getElementById('resultDate').textContent = '🗓 ' + dateStr + ' 推荐';
 
@@ -730,6 +763,10 @@ function renderResult(dateStr, data) {
   document.getElementById('takeoutDish').textContent = '🍜 ' + data.takeoutDish;
   document.getElementById('takeoutReason').textContent = data.takeoutReason;
   document.getElementById('takeoutTip').textContent = '💰 ' + data.takeoutTip;
+  const takeoutLink = document.getElementById('takeoutLink');
+  const takeoutHref = getMeituanUnionSearchUrl(data.takeoutDish);
+  takeoutLink.href = takeoutHref;
+  takeoutLink.onclick = () => trackAffiliateClick(data.takeoutDish, takeoutHref);
 
   document.getElementById('eatoutType').textContent = '🏪 ' + data.eatoutType;
   document.getElementById('eatoutDish').textContent = data.eatoutDish;

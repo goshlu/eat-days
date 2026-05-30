@@ -27,8 +27,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
-      <body className="min-h-screen bg-[#f5f5f7] antialiased">
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body className="min-h-screen bg-[#f5f5f7] antialiased" suppressHydrationWarning>
         <AnalyticsProvider>
           <AuthProvider>
             {children}

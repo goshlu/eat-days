@@ -71,7 +71,11 @@ test.describe('首页推荐功能', () => {
 
     // 验证链接指向美团
     const href = await searchLink.getAttribute('href');
-    expect(href).toContain('meituan.com/search');
+    expect(href).toContain('union.meituan.com/search');
+
+    const rel = await searchLink.getAttribute('rel');
+    expect(rel).toContain('nofollow');
+    expect(rel).toContain('sponsored');
   });
 
   test('应该有大厨点评', async ({ page }) => {

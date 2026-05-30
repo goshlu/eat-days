@@ -70,6 +70,32 @@ function incrementRateLimit(): number {
 }
 
 // ---- 主页面 ----
+function getDisplayErrorMessage(error: Error | undefined): string | null {
+  if (!error) return null;
+
+  const message = error.message || '';
+
+  try {
+    const parsed = JSON.parse(message) as { message?: string; error?: string };
+    if (parsed.message) return parsed.message;
+    if (parsed.error === 'LLM_API_KEY_MISSING') {
+      return '未配置 AI API Key，请在 .env.local 中设置 LLM_API_KEY、DEEPSEEK_API_KEY 或 OPENAI_API_KEY 后重试。';
+    }
+  } catch {
+    // Non-JSON error messages are handled below.
+  }
+
+  if (message.includes('LLM_API_KEY_MISSING') || message.includes('API Key')) {
+    return '未配置 AI API Key，请在 .env.local 中设置 LLM_API_KEY、DEEPSEEK_API_KEY 或 OPENAI_API_KEY 后重试。';
+  }
+
+  if (/<!doctype html|<html[\s>]|<script[\s>]|__NEXT_DATA__/i.test(message)) {
+    return '推荐服务暂时不可用，请检查终端里的后端报错或 API Key 配置后重试。';
+  }
+
+  return message.length > 180 ? `${message.slice(0, 180)}...` : message;
+}
+
 export default function Home() {
   // NextAuth session
   const { data: session } = useSession();
@@ -359,7 +385,7 @@ export default function Home() {
   const displayLoading = aiLoading;
   const displayError = rateLimitReached
     ? '明天再来吧，今天的推荐次数已用完 😋'
-    : (aiError?.message || null);
+    : getDisplayErrorMessage(aiError);
 
   // 防止 SSR hydration 不匹配
   if (!mounted) {

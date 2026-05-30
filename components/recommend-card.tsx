@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { DislikeButton } from '@/components/dislike-button';
 import { RecommendSkeleton } from '@/components/recommend-skeleton';
 import { FeedbackButtons } from '@/components/feedback-buttons';
+import { getMeituanUnionSearchUrl } from '@/lib/affiliate';
 
 // ---- 推荐数据类型 ----
 interface RecommendationJSON {
@@ -28,6 +29,28 @@ interface RecommendCardProps {
   spicyLevel?: number;
   dislikes?: string[];
   onDisliked?: (dishName: string) => void;
+}
+
+function trackAffiliateClick(keyword: string, href: string, userId?: string) {
+  const payload = JSON.stringify({
+    provider: 'meituan',
+    keyword,
+    href,
+    userId,
+  });
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob([payload], { type: 'application/json' });
+    navigator.sendBeacon('/api/affiliate-click', blob);
+    return;
+  }
+
+  fetch('/api/affiliate-click', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+    keepalive: true,
+  }).catch(() => {});
 }
 
 // 根据标题 emoji 选择配色
@@ -63,7 +86,7 @@ function getSectionStyle(title: string) {
 }
 
 // ---- JSON 推荐渲染组件 ----
-function RecommendationJSONContent({ data, onDisliked }: { data: RecommendationJSON; onDisliked?: (dishName: string) => void }) {
+function RecommendationJSONContent({ data, userId, onDisliked }: { data: RecommendationJSON; userId?: string; onDisliked?: (dishName: string) => void }) {
   const sections = [
     {
       title: '👩‍🍳 今日做饭',
@@ -95,7 +118,7 @@ function RecommendationJSONContent({ data, onDisliked }: { data: RecommendationJ
         { label: '凑单小贴士', value: data.takeout.tip },
       ],
       dish: data.takeout.dish,
-      searchUrl: data.takeout.dish ? `https://meituan.com/search?keyword=${encodeURIComponent(data.takeout.dish)}` : undefined,
+      searchUrl: data.takeout.dish ? getMeituanUnionSearchUrl(data.takeout.dish) : undefined,
     },
     {
       title: '🚶 出去吃',
@@ -148,7 +171,8 @@ function RecommendationJSONContent({ data, onDisliked }: { data: RecommendationJ
               <a
                 href={section.searchUrl}
                 target="_blank"
-                rel="noopener noreferrer"
+                rel="nofollow sponsored noopener noreferrer"
+                onClick={() => trackAffiliateClick(section.dish, section.searchUrl!, userId)}
                 className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline mt-2"
               >
                 🍔 点此搜索
@@ -308,7 +332,7 @@ export function RecommendCard({ content, recommendation, isLoading, error, dateS
         </Card>
         <Card className="overflow-hidden">
           <CardContent className="p-5">
-            <RecommendationJSONContent data={recommendation} onDisliked={onDisliked} />
+            <RecommendationJSONContent data={recommendation} userId={userId} onDisliked={onDisliked} />
             <div className="mt-4 pt-3 border-t border-gray-200 flex justify-center">
               <FeedbackButtons
                 cookDish={recommendation.cook.dish}
